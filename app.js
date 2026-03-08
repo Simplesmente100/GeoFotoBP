@@ -148,11 +148,13 @@ async function capturarFoto() {
     ctx.drawImage(video, 0, 0, w, h);
 
     let utmTexto = "UTM indisponivel";
+    let utmCompleta = "UTM indisponivel";
 
     try {
       const geo = await obterLocalizacao();
       const utm = latLngParaUTM(geo.lat, geo.lng);
       utmTexto = `UTM: Z${utm.zona}${utm.hemisferio} E ${utm.easting} N ${utm.northing}`;
+      utmCompleta = `${utmTexto} (WGS84)`;
     } catch (_) {
       alert("Permissao de localizacao negada ou indisponivel. A foto sera gerada sem coordenadas precisas.");
     }
@@ -187,7 +189,7 @@ async function capturarFoto() {
 
     lastBlob = blob;
     resultadoImg.src = URL.createObjectURL(blob);
-    hashTexto.textContent = `Hash completo para verificacao: ${hashCompleto}`;
+    hashTexto.textContent = `${utmCompleta}\nHash completo para verificacao: ${hashCompleto}`;
     btnDownload.disabled = false;
     btnShare.disabled = false;
     setStatus("Foto gerada com sucesso.");

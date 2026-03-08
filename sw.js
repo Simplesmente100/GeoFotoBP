@@ -1,11 +1,12 @@
-const CACHE_VERSION = "v3";
+const CACHE_VERSION = "v4";
 const CACHE_NAME = `geofotobp-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   "./",
   "./index.html",
   "./app.js",
   "./manifest.json",
-  "./logo-placeholder.png"
+  "./logo-placeholder.png",
+  "./logo-municipio-bp.png"
 ];
 
 self.addEventListener("install", (event) => {

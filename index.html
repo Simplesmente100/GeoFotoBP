@@ -50,6 +50,15 @@
 
     header { text-align: center; }
 
+    .header-top {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+
     h1 {
       margin: 0 0 10px;
       font-size: clamp(2.1rem, 5vw, 3.2rem);
@@ -59,7 +68,8 @@
     }
 
     .logo {
-      width: 102px;
+      width: 118px;
+      height: auto;
       border-radius: 14px;
       box-shadow: 0 6px 16px rgba(116, 82, 0, 0.24);
       background: #ffe081;
@@ -68,8 +78,9 @@
 
     .descricao {
       text-align: center;
-      font-size: 1.06em;
-      margin: 10px;
+      font-size: 1.04em;
+      margin: 8px auto 2px;
+      max-width: 760px;
       color: #4f3a0c;
       line-height: 1.55;
     }
@@ -83,7 +94,7 @@
       border: 2px solid #ffd76a;
     }
 
-    video, img, canvas {
+    .video-wrap video, #resultadoImg, canvas {
       width: 100%;
       height: 100%;
       object-fit: cover;
@@ -162,18 +173,28 @@
     @media (max-width: 640px) {
       .actions { flex-direction: column; }
       button { width: 100%; }
+      .header-top { gap: 8px; }
+      .logo { width: 98px; }
     }
   </style>
 </head>
 <body>
   <main class="container">
     <header>
-      <h1>GeoFotoBP</h1>
-      <!-- Lucas: substitua o src abaixo pela imagem real do brasao/logo do municipio -->
-      <img src="logo-placeholder.png" alt="Brasao de Bom Principio do Piaui" class="logo" />
+      <div class="header-top">
+        <!-- Para usar a logomarca oficial enviada por Lucas, salve o arquivo como logo-municipio-bp.png -->
+        <img
+          src="logo-municipio-bp.png"
+          alt="Logomarca da Prefeitura de Bom Principio do Piaui"
+          class="logo"
+          onerror="this.onerror=null; this.src='logo-placeholder.png';"
+        />
+        <h1>GeoFotoBP</h1>
+      </div>
       <p class="descricao">
-        GeoFotoBP - Desenvolvido por Lucas Moreira, funcionario do municipio de Bom Principio do Piaui.<br>
-        Objetivo: Compartilhar informacoes georreferenciadas e auditaveis para uso interno e comunitario no municipio.
+        O GeoFotoBP foi desenvolvido por Lucas Moreira, funcionario do municipio de Bom Principio do Piaui,
+        para apoiar o compartilhamento de informacoes georreferenciadas e auditaveis.
+        A plataforma fortalece o registro de campo e a transparencia das acoes municipais para uso interno e comunitario.
       </p>
     </header>
 

@@ -8,6 +8,7 @@ const btnDownload = document.getElementById("btnDownload");
 const btnShare = document.getElementById("btnShare");
 
 let lastBlob = null;
+let refreshing = false;
 
 function setStatus(msg) {
   statusEl.textContent = msg;
@@ -42,10 +43,7 @@ function obterLocalizacao() {
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        resolve({
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude
-        });
+        resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude });
       },
       (err) => reject(err),
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
@@ -182,13 +180,35 @@ btnShare.addEventListener("click", async () => {
 });
 
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch(console.error);
+  window.addEventListener("load", async () => {
+    try {
+      const registration = await navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" });
+      registration.update();
+
+      if (registration.waiting) {
+        registration.waiting.postMessage({ type: "SKIP_WAITING" });
+      }
+
+      registration.addEventListener("updatefound", () => {
+        const newWorker = registration.installing;
+        if (!newWorker) return;
+
+        newWorker.addEventListener("statechange", () => {
+          if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+            newWorker.postMessage({ type: "SKIP_WAITING" });
+          }
+        });
+      });
+
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (refreshing) return;
+        refreshing = true;
+        window.location.reload();
+      });
+    } catch (err) {
+      console.error("Erro ao registrar service worker:", err);
+    }
   });
 }
 
-<<<<<<< HEAD
 iniciarCamera();
-=======
-iniciarCamera();
->>>>>>> 60553b3a2583b9dac78c0db0701deab6efeaa14d

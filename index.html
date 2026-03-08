@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f5c542" />
+  <title>GeoFotoBP</title>
+  <link rel="manifest" href="manifest.json" />
+  <style>
+    :root {
+      --bg-start: #fff8cc;
+      --bg-end: #f5c542;
+      --bg-accent: #ffe08a;
+      --card: rgba(255, 255, 255, 0.9);
+      --text: #2f2a1f;
+      --primary: #d19a00;
+      --primary-dark: #b98500;
+      --shadow: 0 10px 28px rgba(117, 87, 10, 0.18);
+      --radius: 16px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      min-height: 100vh;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 15% 10%, rgba(255,255,255,0.5), transparent 35%),
+        linear-gradient(145deg, var(--bg-start), var(--bg-end));
+      display: flex;
+      justify-content: center;
+      padding: 24px 14px 36px;
+    }
+
+    .container { width: min(980px, 100%); display: grid; gap: 18px; }
+
+    header, .card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 16px;
+      border: 1px solid rgba(209, 154, 0, 0.22);
+    }
+
+    header { text-align: center; }
+    h1 { margin: 0 0 10px; font-size: clamp(2rem, 5vw, 3rem); color: #7b5900; }
+
+    .logo {
+      width: 100px;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0,0,0,.2);
+      background: var(--bg-accent);
+    }
+
+    .descricao {
+      text-align: center;
+      font-size: 1.05em;
+      margin: 10px;
+      color: #4b3f24;
+      line-height: 1.5;
+    }
+
+    .video-wrap {
+      width: 100%;
+      border-radius: 12px;
+      overflow: hidden;
+      aspect-ratio: 16 / 9;
+      background: #2d2415;
+    }
+
+    video, img, canvas {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    #resultadoImg {
+      border-radius: 12px;
+      max-height: 65vh;
+      background: #f3e4b8;
+    }
+
+    .actions { margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap; }
+
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 20px;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 1rem;
+      box-shadow: 0 6px 14px rgba(117, 87, 10, .2);
+      transition: transform .18s ease, background .18s ease;
+    }
+
+    button:hover { transform: translateY(-1px); }
+    button:active { transform: translateY(1px); }
+
+    #btnFoto {
+      background: var(--primary);
+      color: #fff;
+      min-width: 180px;
+      font-size: 1.1rem;
+    }
+
+    #btnFoto:hover { background: var(--primary-dark); }
+
+    .secondary { background: #fffef8; color: #654b00; }
+    .secondary[disabled] { opacity: .5; cursor: not-allowed; }
+
+    .status { margin: 8px 2px 0; min-height: 1.4em; color: #6f5b2a; }
+
+    .hash-box {
+      margin-top: 10px;
+      background: #fffdf2;
+      border: 1px solid #f0dfad;
+      border-radius: 10px;
+      padding: 10px;
+      word-break: break-all;
+      font-size: .92rem;
+      color: #4a3a15;
+    }
+
+    @media (max-width: 640px) {
+      .actions { flex-direction: column; }
+      button { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <header>
+      <h1>GeoFotoBP</h1>
+      <!-- Lucas: substitua o src abaixo pela imagem real do brasao/logo do municipio -->
+      <img src="logo-placeholder.png" alt="Brasao de Bom Principio do Piaui" class="logo" />
+      <p class="descricao">
+        GeoFotoBP - Desenvolvido por Lucas Moreira, funcionario do municipio de Bom Principio do Piaui.<br>
+        Objetivo: Compartilhar informacoes georreferenciadas e auditaveis para uso interno e comunitario no municipio.
+      </p>
+    </header>
+
+    <section class="card">
+      <div class="video-wrap">
+        <video id="video" autoplay playsinline muted></video>
+      </div>
+      <div class="actions">
+        <button id="btnFoto">Tirar Foto</button>
+      </div>
+      <p id="status" class="status"></p>
+      <canvas id="canvas" hidden></canvas>
+    </section>
+
+    <section class="card">
+      <img id="resultadoImg" alt="Foto resultante com auditoria" />
+      <div id="hashTexto" class="hash-box">Hash completo para verificacao: aguardando captura...</div>
+      <div class="actions">
+        <button id="btnDownload" class="secondary" disabled>Download</button>
+        <button id="btnShare" class="secondary" disabled>Compartilhar</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

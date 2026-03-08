@@ -1,0 +1,22 @@
+{
+  "name": "GeoFotoBP",
+  "short_name": "GeoFotoBP",
+  "description": "Captura de fotos georreferenciadas e auditaveis para Bom Principio do Piaui",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#fff8cc",
+  "theme_color": "#f5c542",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "logo-placeholder.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "logo-placeholder.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

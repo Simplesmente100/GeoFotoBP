@@ -61,6 +61,60 @@ function dataHoraBR() {
   return `${dd}/${mm}/${yyyy} ${hh}:${mi}`;
 }
 
+function latLngParaUTM(latitude, longitude) {
+  const a = 6378137.0;
+  const f = 1 / 298.257223563;
+  const k0 = 0.9996;
+  const e2 = f * (2 - f);
+  const ePrime2 = e2 / (1 - e2);
+
+  const latRad = (latitude * Math.PI) / 180;
+  const lonRad = (longitude * Math.PI) / 180;
+
+  const zona = Math.floor((longitude + 180) / 6) + 1;
+  const lonCentralGraus = zona * 6 - 183;
+  const lonCentralRad = (lonCentralGraus * Math.PI) / 180;
+  const hemisferio = latitude >= 0 ? "N" : "S";
+
+  const N = a / Math.sqrt(1 - e2 * Math.sin(latRad) ** 2);
+  const T = Math.tan(latRad) ** 2;
+  const C = ePrime2 * Math.cos(latRad) ** 2;
+  const A = Math.cos(latRad) * (lonRad - lonCentralRad);
+
+  const M =
+    a *
+    ((1 - e2 / 4 - (3 * e2 ** 2) / 64 - (5 * e2 ** 3) / 256) * latRad -
+      ((3 * e2) / 8 + (3 * e2 ** 2) / 32 + (45 * e2 ** 3) / 1024) * Math.sin(2 * latRad) +
+      ((15 * e2 ** 2) / 256 + (45 * e2 ** 3) / 1024) * Math.sin(4 * latRad) -
+      ((35 * e2 ** 3) / 3072) * Math.sin(6 * latRad));
+
+  const easting =
+    k0 *
+      N *
+      (A +
+        ((1 - T + C) * A ** 3) / 6 +
+        ((5 - 18 * T + T ** 2 + 72 * C - 58 * ePrime2) * A ** 5) / 120) +
+    500000;
+
+  let northing =
+    k0 *
+    (M +
+      N *
+        Math.tan(latRad) *
+        (A ** 2 / 2 +
+          ((5 - T + 9 * C + 4 * C ** 2) * A ** 4) / 24 +
+          ((61 - 58 * T + T ** 2 + 600 * C - 330 * ePrime2) * A ** 6) / 720));
+
+  if (latitude < 0) northing += 10000000;
+
+  return {
+    zona,
+    hemisferio,
+    easting: easting.toFixed(2),
+    northing: northing.toFixed(2)
+  };
+}
+
 async function sha256Hex(texto) {
   const bytes = new TextEncoder().encode(texto);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -93,13 +147,12 @@ async function capturarFoto() {
 
     ctx.drawImage(video, 0, 0, w, h);
 
-    let lat = "indisponivel";
-    let lng = "indisponivel";
+    let utmTexto = "UTM indisponivel";
 
     try {
       const geo = await obterLocalizacao();
-      lat = geo.lat.toFixed(6);
-      lng = geo.lng.toFixed(6);
+      const utm = latLngParaUTM(geo.lat, geo.lng);
+      utmTexto = `UTM: Z${utm.zona}${utm.hemisferio} E ${utm.easting} N ${utm.northing}`;
     } catch (_) {
       alert("Permissao de localizacao negada ou indisponivel. A foto sera gerada sem coordenadas precisas.");
     }
@@ -110,7 +163,7 @@ async function capturarFoto() {
 
     const linhas = [
       `Data: ${dataHora}`,
-      `GPS: Lat ${lat}, Lng ${lng}`,
+      utmTexto,
       `Hash: ${hashCompleto.slice(0, 10)}`
     ];
 

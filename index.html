@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#ffbf00" />
+  <title>GeoFotoBP</title>
+  <link rel="manifest" href="manifest.json" />
+  <style>
+    :root {
+      --bg-start: #fff7b0;
+      --bg-mid: #ffd84d;
+      --bg-end: #ffbf00;
+      --card: rgba(255, 255, 255, 0.92);
+      --text: #2c2208;
+      --title: #8a5d00;
+      --primary: #f4a300;
+      --primary-dark: #d98d00;
+      --ring: #ffda6a;
+      --shadow: 0 12px 30px rgba(146, 97, 0, 0.2);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      min-height: 100vh;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 10% 8%, rgba(255,255,255,0.6), transparent 34%),
+        radial-gradient(circle at 92% 18%, rgba(255,255,255,0.22), transparent 30%),
+        linear-gradient(140deg, var(--bg-start) 0%, var(--bg-mid) 55%, var(--bg-end) 100%);
+      display: flex;
+      justify-content: center;
+      padding: 24px 14px 36px;
+    }
+
+    .container { width: min(1000px, 100%); display: grid; gap: 18px; }
+
+    header,
+    .card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      border: 1px solid rgba(217, 141, 0, 0.28);
+      padding: 18px;
+    }
+
+    header { text-align: center; }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: clamp(2.1rem, 5vw, 3.2rem);
+      letter-spacing: 0.3px;
+      color: var(--title);
+      text-shadow: 0 1px 0 rgba(255,255,255,0.7);
+    }
+
+    .logo {
+      width: 102px;
+      border-radius: 14px;
+      box-shadow: 0 6px 16px rgba(116, 82, 0, 0.24);
+      background: #ffe081;
+      border: 2px solid #ffe9a8;
+    }
+
+    .descricao {
+      text-align: center;
+      font-size: 1.06em;
+      margin: 10px;
+      color: #4f3a0c;
+      line-height: 1.55;
+    }
+
+    .video-wrap {
+      width: 100%;
+      border-radius: 14px;
+      overflow: hidden;
+      aspect-ratio: 16 / 9;
+      background: #2e2206;
+      border: 2px solid #ffd76a;
+    }
+
+    video, img, canvas {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    #resultadoImg {
+      border-radius: 14px;
+      max-height: 65vh;
+      background: #f8e9b6;
+      border: 2px solid #ffe091;
+    }
+
+    .actions {
+      margin-top: 12px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 22px;
+      font-weight: 800;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: transform .2s ease, box-shadow .2s ease, background .2s ease;
+      box-shadow: 0 7px 16px rgba(146, 97, 0, .22);
+    }
+
+    button:hover { transform: translateY(-2px); }
+    button:active { transform: translateY(1px); }
+    button:focus-visible { outline: 3px solid var(--ring); outline-offset: 2px; }
+
+    #btnFoto {
+      background: linear-gradient(180deg, #ffc425, var(--primary));
+      color: #fff;
+      min-width: 190px;
+      font-size: 1.12rem;
+    }
+
+    #btnFoto:hover {
+      background: linear-gradient(180deg, #ffbf00, var(--primary-dark));
+    }
+
+    .secondary {
+      background: #fffaf0;
+      color: #6f4f00;
+      border: 1px solid #f3cc72;
+    }
+
+    .secondary[disabled] {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+
+    .status {
+      margin: 8px 2px 0;
+      min-height: 1.4em;
+      color: #735317;
+      font-weight: 600;
+    }
+
+    .hash-box {
+      margin-top: 10px;
+      background: #fffdf6;
+      border: 1px solid #efd18c;
+      border-radius: 12px;
+      padding: 11px;
+      word-break: break-all;
+      font-size: .92rem;
+      color: #4f3a0d;
+    }
+
+    @media (max-width: 640px) {
+      .actions { flex-direction: column; }
+      button { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <header>
+      <h1>GeoFotoBP</h1>
+      <!-- Lucas: substitua o src abaixo pela imagem real do brasao/logo do municipio -->
+      <img src="logo-placeholder.png" alt="Brasao de Bom Principio do Piaui" class="logo" />
+      <p class="descricao">
+        GeoFotoBP - Desenvolvido por Lucas Moreira, funcionario do municipio de Bom Principio do Piaui.<br>
+        Objetivo: Compartilhar informacoes georreferenciadas e auditaveis para uso interno e comunitario no municipio.
+      </p>
+    </header>
+
+    <section class="card">
+      <div class="video-wrap">
+        <video id="video" autoplay playsinline muted></video>
+      </div>
+      <div class="actions">
+        <button id="btnFoto">Tirar Foto</button>
+      </div>
+      <p id="status" class="status"></p>
+      <canvas id="canvas" hidden></canvas>
+    </section>
+
+    <section class="card">
+      <img id="resultadoImg" alt="Foto resultante com auditoria" />
+      <div id="hashTexto" class="hash-box">Hash completo para verificacao: aguardando captura...</div>
+      <div class="actions">
+        <button id="btnDownload" class="secondary" disabled>Download</button>
+        <button id="btnShare" class="secondary" disabled>Compartilhar</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

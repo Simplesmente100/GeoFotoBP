@@ -93,6 +93,47 @@
       font-weight: 600;
     }
 
+    .install-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      padding: 16px;
+    }
+
+    .install-modal.show {
+      display: flex;
+    }
+
+    .install-card {
+      width: min(460px, 100%);
+      background: #fffdf6;
+      border: 1px solid #efd18c;
+      border-radius: 16px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.2);
+      padding: 16px;
+      color: #4f3a0d;
+    }
+
+    .install-card h3 {
+      margin: 0 0 8px;
+      color: #7a5600;
+      font-size: 1.2rem;
+    }
+
+    .install-card p {
+      margin: 0 0 8px;
+      line-height: 1.45;
+      font-size: 0.96rem;
+    }
+
+    .install-card .actions {
+      margin-top: 10px;
+    }
+
     .video-wrap {
       width: 100%;
       border-radius: 14px;
@@ -228,6 +269,19 @@
 
     <p class="rodape">Site criado por Lucas Moreira</p>
   </main>
+
+  <div id="installModal" class="install-modal" aria-hidden="true">
+    <div class="install-card">
+      <h3>Instalar GeoFotoBP</h3>
+      <p id="installText">
+        Adicione este site na tela inicial para abrir como aplicativo.
+      </p>
+      <div class="actions">
+        <button id="btnInstallNow">Instalar agora</button>
+        <button id="btnInstallLater" class="secondary">Agora não</button>
+      </div>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>

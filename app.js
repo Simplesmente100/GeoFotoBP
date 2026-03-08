@@ -6,16 +6,9 @@ const hashTexto = document.getElementById("hashTexto");
 const btnFoto = document.getElementById("btnFoto");
 const btnDownload = document.getElementById("btnDownload");
 const btnShare = document.getElementById("btnShare");
-const installModal = document.getElementById("installModal");
-const installText = document.getElementById("installText");
-const btnInstallNow = document.getElementById("btnInstallNow");
-const btnInstallLater = document.getElementById("btnInstallLater");
 
 let lastBlob = null;
 let refreshing = false;
-let deferredPrompt = null;
-
-const INSTALL_SEEN_KEY = "geofotobp_install_prompt_seen";
 
 function setStatus(msg) {
   statusEl.textContent = msg;
@@ -137,67 +130,6 @@ function baixarBlob(blob, nome) {
   URL.revokeObjectURL(url);
 }
 
-function isIOS() {
-  return /iphone|ipad|ipod/i.test(navigator.userAgent);
-}
-
-function isStandalone() {
-  return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
-}
-
-function closeInstallModal() {
-  installModal.classList.remove("show");
-  installModal.setAttribute("aria-hidden", "true");
-}
-
-function openInstallModal() {
-  if (!installModal || isStandalone()) return;
-  installModal.classList.add("show");
-  installModal.setAttribute("aria-hidden", "false");
-}
-
-function setupInstallGuidance() {
-  if (!installModal || !btnInstallNow || !btnInstallLater || !installText) return;
-
-  btnInstallLater.addEventListener("click", () => {
-    localStorage.setItem(INSTALL_SEEN_KEY, "1");
-    closeInstallModal();
-  });
-
-  btnInstallNow.addEventListener("click", async () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      await deferredPrompt.userChoice;
-      deferredPrompt = null;
-      localStorage.setItem(INSTALL_SEEN_KEY, "1");
-      closeInstallModal();
-      return;
-    }
-
-    if (isIOS()) {
-      installText.textContent =
-        "No iPhone: toque em Compartilhar no Safari e depois em Adicionar à Tela de Início.";
-      return;
-    }
-
-    installText.textContent =
-      "No Android, use o menu do navegador (⋮) e toque em Instalar app ou Adicionar à tela inicial.";
-  });
-
-  window.addEventListener("beforeinstallprompt", (event) => {
-    event.preventDefault();
-    deferredPrompt = event;
-  });
-
-  if (!localStorage.getItem(INSTALL_SEEN_KEY) && !isStandalone()) {
-    if (isIOS()) {
-      installText.textContent =
-        "Para instalar no iPhone: toque em Compartilhar no Safari e depois em Adicionar à Tela de Início.";
-    }
-
-    window.setTimeout(openInstallModal, 1200);
-  }
-}
 
 async function capturarFoto() {
   try {
@@ -336,4 +268,3 @@ if ("serviceWorker" in navigator) {
 }
 
 iniciarCamera();
-setupInstallGuidance();

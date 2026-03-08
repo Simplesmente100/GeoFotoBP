@@ -187,4 +187,8 @@ if ("serviceWorker" in navigator) {
   });
 }
 
+<<<<<<< HEAD
 iniciarCamera();
+=======
+iniciarCamera();
+>>>>>>> 60553b3a2583b9dac78c0db0701deab6efeaa14d

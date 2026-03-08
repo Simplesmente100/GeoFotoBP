@@ -21,4 +21,8 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   event.respondWith(caches.match(event.request).then((cached) => cached || fetch(event.request)));
+<<<<<<< HEAD
 });
+=======
+});
+>>>>>>> 60553b3a2583b9dac78c0db0701deab6efeaa14d

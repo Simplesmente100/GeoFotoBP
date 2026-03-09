@@ -129,6 +129,16 @@ async function sha256HexArrayBuffer(buffer) {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+function blobParaArrayBuffer(blob) {
+  if (blob.arrayBuffer) return blob.arrayBuffer();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("Falha ao ler o arquivo para validar hash."));
+    reader.readAsArrayBuffer(blob);
+  });
+}
+
 function baixarBlob(blob, nome) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -221,7 +231,13 @@ async function capturarFoto() {
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.94));
     if (!blob) throw new Error("Falha ao gerar imagem final.");
 
-    const hashArquivoFinal = await sha256HexArrayBuffer(await blob.arrayBuffer());
+    let hashArquivoFinal = "";
+    try {
+      const bufferFinal = await blobParaArrayBuffer(blob);
+      hashArquivoFinal = await sha256HexArrayBuffer(bufferFinal);
+    } catch (_) {
+      hashArquivoFinal = hashSobreposicao;
+    }
     lastFilenameBase = `GeoFotoBP-${Date.now()}`;
     lastMetadata = {
       sistema: "GeoFotoBP",

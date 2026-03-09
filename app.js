@@ -5,11 +5,9 @@ const resultadoImg = document.getElementById("resultadoImg");
 const hashTexto = document.getElementById("hashTexto");
 const btnFoto = document.getElementById("btnFoto");
 const btnDownload = document.getElementById("btnDownload");
-const btnComprovante = document.getElementById("btnComprovante");
 const btnShare = document.getElementById("btnShare");
 
 let lastBlob = null;
-let lastMetadata = null;
 let lastFilenameBase = null;
 let refreshing = false;
 
@@ -124,21 +122,6 @@ async function sha256Hex(texto) {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-async function sha256HexArrayBuffer(buffer) {
-  const digest = await crypto.subtle.digest("SHA-256", buffer);
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-function blobParaArrayBuffer(blob) {
-  if (blob.arrayBuffer) return blob.arrayBuffer();
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error("Falha ao ler o arquivo para validar hash."));
-    reader.readAsArrayBuffer(blob);
-  });
-}
-
 function baixarBlob(blob, nome) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -146,11 +129,6 @@ function baixarBlob(blob, nome) {
   a.download = nome;
   a.click();
   URL.revokeObjectURL(url);
-}
-
-function baixarTexto(conteudo, nomeArquivo) {
-  const blob = new Blob([conteudo], { type: "application/json;charset=utf-8" });
-  baixarBlob(blob, nomeArquivo);
 }
 
 
@@ -184,15 +162,15 @@ async function capturarFoto() {
     }
 
     const dataHora = dataHoraBR();
-    const baseDataUrl = canvas.toDataURL("image/jpeg", 0.92);
-    const hashSobreposicao = await sha256Hex(baseDataUrl);
+    const baseCanonica = `DATA_HORA=${dataHora}|UTM=${utmTexto}|SISTEMA=GeoFotoBP|VERSAO=1`;
+    const hashCanonicado = await sha256Hex(baseCanonica);
 
     const linhasPrincipais = [
       `Data: ${dataHora}`,
       utmTexto
     ];
 
-    const partesHash = hashSobreposicao.match(/.{1,32}/g) || [hashSobreposicao];
+    const partesHash = hashCanonicado.match(/.{1,32}/g) || [hashCanonicado];
     const linhasHash = [
       `Hash: ${partesHash[0]}`,
       ...partesHash.slice(1)
@@ -231,30 +209,13 @@ async function capturarFoto() {
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.94));
     if (!blob) throw new Error("Falha ao gerar imagem final.");
 
-    let hashArquivoFinal = "";
-    try {
-      const bufferFinal = await blobParaArrayBuffer(blob);
-      hashArquivoFinal = await sha256HexArrayBuffer(bufferFinal);
-    } catch (_) {
-      hashArquivoFinal = hashSobreposicao;
-    }
     lastFilenameBase = `GeoFotoBP-${Date.now()}`;
-    lastMetadata = {
-      sistema: "GeoFotoBP",
-      algoritmo_hash: "SHA-256",
-      data_hora: dataHora,
-      coordenada_utm: utmCompleta,
-      hash_sobreposicao: hashSobreposicao,
-      hash_arquivo_final: hashArquivoFinal,
-      arquivo_foto: `${lastFilenameBase}.jpg`
-    };
 
     lastBlob = blob;
     resultadoImg.src = URL.createObjectURL(blob);
     hashTexto.textContent =
-      `${utmCompleta}\nHash do arquivo final (validacao): ${hashArquivoFinal}\nHash usado na sobreposicao: ${hashSobreposicao}`;
+      `${utmCompleta}\nBase canônica: ${baseCanonica}\nHash SHA-256 (validação): ${hashCanonicado}`;
     btnDownload.disabled = false;
-    btnComprovante.disabled = false;
     btnShare.disabled = false;
     setStatus("Foto gerada com sucesso.");
   } catch (err) {
@@ -271,12 +232,6 @@ btnDownload.addEventListener("click", () => {
   if (!lastBlob) return;
   const nome = `${lastFilenameBase || `GeoFotoBP-${Date.now()}`}.jpg`;
   baixarBlob(lastBlob, nome);
-});
-
-btnComprovante.addEventListener("click", () => {
-  if (!lastMetadata) return;
-  const nome = `${lastFilenameBase || `GeoFotoBP-${Date.now()}`}-comprovante.json`;
-  baixarTexto(JSON.stringify(lastMetadata, null, 2), nome);
 });
 
 btnShare.addEventListener("click", async () => {

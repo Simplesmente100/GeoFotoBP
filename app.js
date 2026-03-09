@@ -164,25 +164,45 @@ async function capturarFoto() {
     const baseDataUrl = canvas.toDataURL("image/jpeg", 0.92);
     const hashCompleto = await sha256Hex(baseDataUrl);
 
-    const linhas = [
+    const linhasPrincipais = [
       `Data: ${dataHora}`,
-      utmTexto,
-      `Hash: ${hashCompleto.slice(0, 10)}`
+      utmTexto
     ];
 
-    ctx.font = "22px system-ui, sans-serif";
+    const partesHash = hashCompleto.match(/.{1,32}/g) || [hashCompleto];
+    const linhasHash = [
+      `Hash: ${partesHash[0]}`,
+      ...partesHash.slice(1)
+    ];
+
     ctx.fillStyle = "#fff";
     ctx.strokeStyle = "#000";
     ctx.lineWidth = 4;
 
-    const lineHeight = 30;
+    const lineHeightPrincipal = 30;
+    const lineHeightHash = 22;
     const margem = 22;
-    const yBase = h - margem - lineHeight * (linhas.length - 1);
+    const alturaTexto =
+      linhasPrincipais.length * lineHeightPrincipal +
+      linhasHash.length * lineHeightHash;
+    const yBase = h - margem - alturaTexto;
 
-    linhas.forEach((linha, i) => {
-      const y = yBase + i * lineHeight;
+    let yAtual = yBase;
+
+    ctx.font = "22px system-ui, sans-serif";
+    linhasPrincipais.forEach((linha) => {
+      ctx.strokeText(linha, margem, yAtual);
+      ctx.fillText(linha, margem, yAtual);
+      yAtual += lineHeightPrincipal;
+    });
+
+    ctx.font = "16px system-ui, sans-serif";
+    ctx.lineWidth = 3;
+    linhasHash.forEach((linha) => {
+      const y = yAtual;
       ctx.strokeText(linha, margem, y);
       ctx.fillText(linha, margem, y);
+      yAtual += lineHeightHash;
     });
 
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.94));

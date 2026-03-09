@@ -5,9 +5,12 @@ const resultadoImg = document.getElementById("resultadoImg");
 const hashTexto = document.getElementById("hashTexto");
 const btnFoto = document.getElementById("btnFoto");
 const btnDownload = document.getElementById("btnDownload");
+const btnComprovante = document.getElementById("btnComprovante");
 const btnShare = document.getElementById("btnShare");
 
 let lastBlob = null;
+let lastMetadata = null;
+let lastFilenameBase = null;
 let refreshing = false;
 
 function setStatus(msg) {
@@ -121,6 +124,11 @@ async function sha256Hex(texto) {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+async function sha256HexArrayBuffer(buffer) {
+  const digest = await crypto.subtle.digest("SHA-256", buffer);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 function baixarBlob(blob, nome) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -128,6 +136,11 @@ function baixarBlob(blob, nome) {
   a.download = nome;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+function baixarTexto(conteudo, nomeArquivo) {
+  const blob = new Blob([conteudo], { type: "application/json;charset=utf-8" });
+  baixarBlob(blob, nomeArquivo);
 }
 
 
@@ -162,14 +175,14 @@ async function capturarFoto() {
 
     const dataHora = dataHoraBR();
     const baseDataUrl = canvas.toDataURL("image/jpeg", 0.92);
-    const hashCompleto = await sha256Hex(baseDataUrl);
+    const hashSobreposicao = await sha256Hex(baseDataUrl);
 
     const linhasPrincipais = [
       `Data: ${dataHora}`,
       utmTexto
     ];
 
-    const partesHash = hashCompleto.match(/.{1,32}/g) || [hashCompleto];
+    const partesHash = hashSobreposicao.match(/.{1,32}/g) || [hashSobreposicao];
     const linhasHash = [
       `Hash: ${partesHash[0]}`,
       ...partesHash.slice(1)
@@ -208,10 +221,24 @@ async function capturarFoto() {
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.94));
     if (!blob) throw new Error("Falha ao gerar imagem final.");
 
+    const hashArquivoFinal = await sha256HexArrayBuffer(await blob.arrayBuffer());
+    lastFilenameBase = `GeoFotoBP-${Date.now()}`;
+    lastMetadata = {
+      sistema: "GeoFotoBP",
+      algoritmo_hash: "SHA-256",
+      data_hora: dataHora,
+      coordenada_utm: utmCompleta,
+      hash_sobreposicao: hashSobreposicao,
+      hash_arquivo_final: hashArquivoFinal,
+      arquivo_foto: `${lastFilenameBase}.jpg`
+    };
+
     lastBlob = blob;
     resultadoImg.src = URL.createObjectURL(blob);
-    hashTexto.textContent = `${utmCompleta}\nHash completo para verificacao: ${hashCompleto}`;
+    hashTexto.textContent =
+      `${utmCompleta}\nHash do arquivo final (validacao): ${hashArquivoFinal}\nHash usado na sobreposicao: ${hashSobreposicao}`;
     btnDownload.disabled = false;
+    btnComprovante.disabled = false;
     btnShare.disabled = false;
     setStatus("Foto gerada com sucesso.");
   } catch (err) {
@@ -226,7 +253,14 @@ btnFoto.addEventListener("click", capturarFoto);
 
 btnDownload.addEventListener("click", () => {
   if (!lastBlob) return;
-  baixarBlob(lastBlob, `GeoFotoBP-${Date.now()}.jpg`);
+  const nome = `${lastFilenameBase || `GeoFotoBP-${Date.now()}`}.jpg`;
+  baixarBlob(lastBlob, nome);
+});
+
+btnComprovante.addEventListener("click", () => {
+  if (!lastMetadata) return;
+  const nome = `${lastFilenameBase || `GeoFotoBP-${Date.now()}`}-comprovante.json`;
+  baixarTexto(JSON.stringify(lastMetadata, null, 2), nome);
 });
 
 btnShare.addEventListener("click", async () => {

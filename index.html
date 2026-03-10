@@ -93,6 +93,25 @@
       font-weight: 600;
     }
 
+    .tabs {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .tab-btn {
+      background: #fff7dd;
+      color: #7a5600;
+      border: 1px solid #f3cc72;
+    }
+
+    .tab-btn.active {
+      background: linear-gradient(180deg, #ffc425, var(--primary));
+      color: #fff;
+      border: 0;
+    }
+
+    .view.hidden { display: none; }
 
     .video-wrap {
       width: 100%;
@@ -180,6 +199,39 @@
       color: #4f3a0d;
     }
 
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .gallery-item {
+      border: 1px solid #efd18c;
+      border-radius: 12px;
+      background: #fffdf6;
+      padding: 10px;
+      box-shadow: 0 6px 16px rgba(146, 97, 0, 0.1);
+    }
+
+    .gallery-item img {
+      width: 100%;
+      height: 140px;
+      object-fit: cover;
+      border-radius: 10px;
+      border: 1px solid #f1d896;
+      display: block;
+    }
+
+    .gallery-meta {
+      margin-top: 8px;
+      font-size: 0.82rem;
+      line-height: 1.35;
+      color: #5a4412;
+      white-space: pre-line;
+      word-break: break-word;
+    }
+
     @media (max-width: 640px) {
       .actions { flex-direction: column; }
       button { width: 100%; }
@@ -192,7 +244,6 @@
   <main class="container">
     <header>
       <div class="header-top">
-        <!-- Para usar a logomarca oficial enviada por Lucas, salve o arquivo como logo-municipio-bp.png -->
         <img
           src="logo-municipio-bp.png"
           alt="Logomarca da Prefeitura de Bom Principio do Piaui"
@@ -208,23 +259,43 @@
     </header>
 
     <section class="card">
-      <div class="video-wrap">
-        <video id="video" autoplay playsinline muted></video>
+      <div class="tabs">
+        <button id="tabCaptura" class="tab-btn active">Captura</button>
+        <button id="tabGaleria" class="tab-btn">Galeria</button>
       </div>
-      <div class="actions">
-        <button id="btnFoto">Tirar Foto</button>
-      </div>
-      <p id="status" class="status"></p>
-      <canvas id="canvas" hidden></canvas>
     </section>
 
-    <section class="card">
-      <img id="resultadoImg" alt="Foto resultante com auditoria" />
-      <div id="hashTexto" class="hash-box">Hash completo para verificacao: aguardando captura...</div>
-      <div class="actions">
-        <button id="btnDownload" class="secondary" disabled>Download</button>
-        <button id="btnShare" class="secondary" disabled>Compartilhar</button>
-      </div>
+    <section id="viewCaptura" class="view">
+      <section class="card">
+        <div class="video-wrap">
+          <video id="video" autoplay playsinline muted></video>
+        </div>
+        <div class="actions">
+          <button id="btnFoto">Tirar Foto</button>
+        </div>
+        <p id="status" class="status"></p>
+        <canvas id="canvas" hidden></canvas>
+      </section>
+
+      <section class="card">
+        <img id="resultadoImg" alt="Foto resultante com auditoria" />
+        <div id="hashTexto" class="hash-box">Hash completo para verificacao: aguardando captura...</div>
+        <div class="actions">
+          <button id="btnDownload" class="secondary" disabled>Download</button>
+          <button id="btnShare" class="secondary" disabled>Compartilhar</button>
+        </div>
+      </section>
+    </section>
+
+    <section id="viewGaleria" class="view hidden">
+      <section class="card">
+        <div id="galleryStatus" class="status">Carregando galeria local...</div>
+        <div class="actions">
+          <button id="btnRefreshGallery" class="secondary">Atualizar galeria</button>
+          <button id="btnUploadAll" class="secondary">Enviar todas para nuvem</button>
+        </div>
+        <div id="galleryGrid" class="gallery-grid"></div>
+      </section>
     </section>
 
     <p class="rodape">Site criado por Lucas Moreira</p>

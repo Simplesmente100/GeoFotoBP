@@ -419,10 +419,21 @@ async function uploadRegistroParaNuvem(item, uploadUrl) {
   if (!resp.ok) throw new Error(`Falha upload (${resp.status})`);
 }
 
+function isMegaFileRequestUrl(url) {
+  return /https?:\/\/mega\.nz\/filerequest/i.test(url);
+}
+
 async function uploadTodasPendentes() {
   const uploadUrl = (CLOUD_UPLOAD_URL || "").trim();
   if (!/^https?:\/\//i.test(uploadUrl)) {
     alert("Configure CLOUD_UPLOAD_URL com uma URL valida de endpoint HTTP/HTTPS.");
+    return;
+  }
+
+  if (isMegaFileRequestUrl(uploadUrl)) {
+    setGalleryStatus("Abrindo formulario do MEGA para envio das imagens...");
+    window.open(uploadUrl, "_blank", "noopener,noreferrer");
+    alert("O MEGA File Request nao disponibiliza endpoint de API direta para envio em lote pelo navegador. O formulario do MEGA foi aberto para envio.");
     return;
   }
 

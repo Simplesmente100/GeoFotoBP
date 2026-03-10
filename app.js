@@ -21,7 +21,7 @@ const DB_VERSION = 1;
 const STORE_FOTOS = "fotos";
 
 // Defina aqui a conta/endpoint de nuvem já escolhido para upload.
-const CLOUD_UPLOAD_URL = "";
+const CLOUD_UPLOAD_URL = "https://mega.nz/filerequest/RAYcZ41lCPQ";
 const CLOUD_UPLOAD_TOKEN = "";
 
 let dbPromise = null;
@@ -393,7 +393,7 @@ async function capturarFoto() {
   }
 }
 
-async function uploadRegistroParaNuvem(item) {
+async function uploadRegistroParaNuvem(item, uploadUrl) {
   const formData = new FormData();
   const file = new File([item.blob], item.fileName, { type: "image/jpeg" });
   formData.append("file", file);
@@ -410,7 +410,7 @@ async function uploadRegistroParaNuvem(item) {
   const headers = {};
   if (CLOUD_UPLOAD_TOKEN) headers.Authorization = `Bearer ${CLOUD_UPLOAD_TOKEN}`;
 
-  const resp = await fetch(CLOUD_UPLOAD_URL, {
+  const resp = await fetch(uploadUrl, {
     method: "POST",
     headers,
     body: formData
@@ -420,8 +420,9 @@ async function uploadRegistroParaNuvem(item) {
 }
 
 async function uploadTodasPendentes() {
-  if (!CLOUD_UPLOAD_URL || CLOUD_UPLOAD_URL.includes("SEU")) {
-    alert("Configure CLOUD_UPLOAD_URL no app.js para o endpoint da sua nuvem.");
+  const uploadUrl = (CLOUD_UPLOAD_URL || "").trim();
+  if (!/^https?:\/\//i.test(uploadUrl)) {
+    alert("Configure CLOUD_UPLOAD_URL com uma URL valida de endpoint HTTP/HTTPS.");
     return;
   }
 
@@ -442,7 +443,7 @@ async function uploadTodasPendentes() {
 
     for (const item of pendentes) {
       try {
-        await uploadRegistroParaNuvem(item);
+        await uploadRegistroParaNuvem(item, uploadUrl);
         await marcarComoEnviada(item.id);
         sucesso += 1;
       } catch (err) {

@@ -5,6 +5,7 @@ const resultadoImg = document.getElementById("resultadoImg");
 const hashTexto = document.getElementById("hashTexto");
 const btnFoto = document.getElementById("btnFoto");
 const btnDownload = document.getElementById("btnDownload");
+const btnDownloadHash = document.getElementById("btnDownloadHash");
 const btnShare = document.getElementById("btnShare");
 const tabCaptura = document.getElementById("tabCaptura");
 const tabGaleria = document.getElementById("tabGaleria");
@@ -26,6 +27,7 @@ const CLOUD_UPLOAD_TOKEN = "";
 let dbPromise = null;
 let lastBlob = null;
 let lastFilenameBase = null;
+let lastImageHash = null;
 let refreshing = false;
 
 function setStatus(msg) {
@@ -271,6 +273,21 @@ async function sha256Hex(texto) {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+async function sha256HexArrayBuffer(buffer) {
+  const digest = await crypto.subtle.digest("SHA-256", buffer);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function blobParaArrayBuffer(blob) {
+  if (blob.arrayBuffer) return blob.arrayBuffer();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("Falha ao ler arquivo para hash."));
+    reader.readAsArrayBuffer(blob);
+  });
+}
+
 function baixarBlob(blob, nome) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -278,6 +295,11 @@ function baixarBlob(blob, nome) {
   a.download = nome;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+function baixarTexto(conteudo, nomeArquivo) {
+  const blob = new Blob([conteudo], { type: "text/plain;charset=utf-8" });
+  baixarBlob(blob, nomeArquivo);
 }
 
 async function capturarFoto() {
@@ -310,55 +332,42 @@ async function capturarFoto() {
     }
 
     const dataHora = dataHoraBR();
-    const baseCanonica = `DATA_HORA=${dataHora}|UTM=${utmTexto}|SISTEMA=GeoFotoBP|VERSAO=1`;
-    const hashCanonicado = await sha256Hex(baseCanonica);
-
     const linhasPrincipais = [`Data: ${dataHora}`, utmTexto];
-    const partesHash = hashCanonicado.match(/.{1,32}/g) || [hashCanonicado];
-    const linhasHash = [`Hash: ${partesHash[0]}`, ...partesHash.slice(1)];
 
     ctx.fillStyle = "#fff";
     ctx.strokeStyle = "#000";
     ctx.lineWidth = 4;
 
-    const lineHeightPrincipal = 30;
-    const lineHeightHash = 22;
+    const lineHeightPrincipal = 29;
     const margem = 22;
-    const alturaTexto =
-      linhasPrincipais.length * lineHeightPrincipal +
-      linhasHash.length * lineHeightHash;
+    const alturaTexto = linhasPrincipais.length * lineHeightPrincipal;
     const yBase = h - margem - alturaTexto;
 
     let yAtual = yBase;
 
-    ctx.font = "22px system-ui, sans-serif";
+    ctx.font = "21px system-ui, sans-serif";
     linhasPrincipais.forEach((linha) => {
       ctx.strokeText(linha, margem, yAtual);
       ctx.fillText(linha, margem, yAtual);
       yAtual += lineHeightPrincipal;
     });
 
-    ctx.font = "16px system-ui, sans-serif";
-    ctx.lineWidth = 3;
-    linhasHash.forEach((linha) => {
-      ctx.strokeText(linha, margem, yAtual);
-      ctx.fillText(linha, margem, yAtual);
-      yAtual += lineHeightHash;
-    });
-
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.94));
     if (!blob) throw new Error("Falha ao gerar imagem final.");
 
+    const imageHash = await sha256HexArrayBuffer(await blobParaArrayBuffer(blob));
+
     lastFilenameBase = `GeoFotoBP-${Date.now()}`;
+    lastImageHash = imageHash;
 
     await addFotoLocal({
       createdAt: Date.now(),
       createdAtIso: new Date().toISOString(),
       dataHora,
       utmTexto: utmCompleta,
-      hash: hashCanonicado,
-      canonicalBase: baseCanonica,
+      hash: imageHash,
       fileName: `${lastFilenameBase}.jpg`,
+      hashFileName: `${lastFilenameBase}.sha256.txt`,
       blob,
       uploaded: false,
       uploadedAt: null
@@ -367,9 +376,10 @@ async function capturarFoto() {
     lastBlob = blob;
     resultadoImg.src = URL.createObjectURL(blob);
     hashTexto.textContent =
-      `${utmCompleta}\nBase canônica: ${baseCanonica}\nHash SHA-256 (validação): ${hashCanonicado}`;
+      `${utmCompleta}\nHash real do arquivo (SHA-256): ${imageHash}`;
 
     btnDownload.disabled = false;
+    btnDownloadHash.disabled = false;
     btnShare.disabled = false;
     setStatus("Foto gerada e salva localmente com sucesso.");
 
@@ -393,7 +403,6 @@ async function uploadRegistroParaNuvem(item) {
       data_hora: item.dataHora,
       utm: item.utmTexto,
       hash: item.hash,
-      base_canonica: item.canonicalBase,
       origem: "GeoFotoBP"
     })
   );
@@ -455,6 +464,14 @@ btnDownload.addEventListener("click", () => {
   if (!lastBlob) return;
   const nome = `${lastFilenameBase || `GeoFotoBP-${Date.now()}`}.jpg`;
   baixarBlob(lastBlob, nome);
+});
+
+btnDownloadHash.addEventListener("click", () => {
+  if (!lastImageHash) return;
+  const base = lastFilenameBase || `GeoFotoBP-${Date.now()}`;
+  const nomeImagem = `${base}.jpg`;
+  const nomeHash = `${base}.sha256.txt`;
+  baixarTexto(`${lastImageHash}  ${nomeImagem}\n`, nomeHash);
 });
 
 btnShare.addEventListener("click", async () => {

@@ -8,34 +8,11 @@ async function readJsonBody(req) {
   return JSON.parse(raw || "{}");
 }
 
-function getAccessMode() {
-  const mode = String(process.env.BLOB_ACCESS_MODE || "public").toLowerCase();
-  return mode === "private" ? "private" : "public";
-}
-
-async function putWithMode(path, data, contentType, accessMode) {
-  const primaryMode = accessMode === "private" ? "private" : "public";
-  const fallbackMode = primaryMode === "public" ? "private" : "public";
-
-  try {
-    return await put(path, data, {
-      access: primaryMode,
-      contentType,
-      token: process.env.BLOB_READ_WRITE_TOKEN
-    });
-  } catch (firstErr) {
-    try {
-      return await put(path, data, {
-        access: fallbackMode,
-        contentType,
-        token: process.env.BLOB_READ_WRITE_TOKEN
-      });
-    } catch (secondErr) {
-      const firstMsg = String(firstErr?.message || "");
-      const secondMsg = String(secondErr?.message || "");
-      throw new Error(`Falha nos dois modos de access. [${primaryMode}] ${firstMsg} | [${fallbackMode}] ${secondMsg}`);
-    }
-  }
+async function putWithStoreDefault(path, data, contentType) {
+  return put(path, data, {
+    contentType,
+    token: process.env.BLOB_READ_WRITE_TOKEN
+  });
 }
 
 module.exports = async function handler(req, res) {
@@ -77,17 +54,16 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    const accessMode = getAccessMode();
     const imageBuffer = Buffer.from(imageBase64, "base64");
     const imagePath = `public-images/${Date.now()}-${fileName}`;
-    const imageBlob = await putWithMode(imagePath, imageBuffer, mimeType, accessMode);
+    const imageBlob = await putWithStoreDefault(imagePath, imageBuffer, mimeType);
 
     const metadata = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       imagePath,
       proxyUrl: `/api/public-file?path=${encodeURIComponent(imagePath)}`,
       imageUrl: imageBlob?.url || null,
-      accessMode,
+      accessMode: "store-default",
       fileName,
       dataHora,
       utmTexto,
@@ -98,7 +74,7 @@ module.exports = async function handler(req, res) {
 
     const metaPath = `public-meta/${metadata.id}.json`;
     metadata.metaPath = metaPath;
-    await putWithMode(metaPath, JSON.stringify(metadata), "application/json", accessMode);
+    await putWithStoreDefault(metaPath, JSON.stringify(metadata), "application/json");
 
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/json");
@@ -111,8 +87,7 @@ module.exports = async function handler(req, res) {
       JSON.stringify({
         ok: false,
         error: "Falha no upload publico",
-        details: err?.message || String(err),
-        hint: "Defina BLOB_ACCESS_MODE como public ou private no Vercel e refaca o deploy."
+        details: err?.message || String(err)
       })
     );
   }

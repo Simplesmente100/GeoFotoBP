@@ -17,9 +17,9 @@ function buildBlobFetchOptions() {
 
 async function putCompat(path, body, contentType) {
   try {
-    return await put(path, body, { access: "private", contentType });
+    return await put(path, body, { access: "private", contentType, addRandomSuffix: false });
   } catch (_) {
-    return put(path, body, { access: "public", contentType });
+    return put(path, body, { access: "public", contentType, addRandomSuffix: false });
   }
 }
 
@@ -66,6 +66,21 @@ async function deleteImageAndMeta(metaPath, imagePath) {
   const targets = [metaPath, imagePath].filter(Boolean);
   if (!targets.length) return;
   await del(targets);
+}
+
+async function deleteRequestAndDuplicates(requestPath, imagePath) {
+  const targets = [requestPath].filter(Boolean);
+  if (imagePath) {
+    const pending = await loadRequests("pending");
+    pending.forEach((item) => {
+      if (item.imagePath === imagePath && item.requestPath) {
+        targets.push(item.requestPath);
+      }
+    });
+  }
+  const uniqueTargets = [...new Set(targets)];
+  if (!uniqueTargets.length) return;
+  await del(uniqueTargets);
 }
 
 module.exports = async function handler(req, res) {
@@ -171,21 +186,21 @@ module.exports = async function handler(req, res) {
       }
 
       const current = await fetchRequestByPath(blob.url);
-      const updated = {
-        ...current,
-        status: action === "approve" ? "approved" : "rejected",
-        reviewedAtIso: new Date().toISOString()
-      };
 
       if (action === "approve") {
         await deleteImageAndMeta(current.metaPath || body.metaPath || "", current.imagePath || body.imagePath || "");
       }
 
-      await putCompat(requestPath, JSON.stringify(updated), "application/json");
+      await deleteRequestAndDuplicates(requestPath, current.imagePath || body.imagePath || "");
 
       res.statusCode = 200;
       res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ ok: true, item: updated }));
+      res.end(
+        JSON.stringify({
+          ok: true,
+          decision: action === "approve" ? "approved_and_removed" : "rejected_and_removed"
+        })
+      );
       return;
     }
 

@@ -8,6 +8,31 @@ async function readJsonBody(req) {
   return JSON.parse(raw || "{}");
 }
 
+async function putWithAutoAccess(path, data, contentType) {
+  let errPublic = null;
+  try {
+    const blob = await put(path, data, {
+      access: "public",
+      contentType
+    });
+    return { blob, accessMode: "public" };
+  } catch (err) {
+    errPublic = err;
+  }
+
+  try {
+    const blob = await put(path, data, {
+      access: "private",
+      contentType
+    });
+    return { blob, accessMode: "private" };
+  } catch (errPrivate) {
+    const msgPublic = errPublic?.message || "erro-public";
+    const msgPrivate = errPrivate?.message || "erro-private";
+    throw new Error(`Upload falhou em ambos modos. public="${msgPublic}" private="${msgPrivate}"`);
+  }
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
     res.statusCode = 405;
@@ -49,17 +74,14 @@ module.exports = async function handler(req, res) {
 
     const imageBuffer = Buffer.from(imageBase64, "base64");
     const imagePath = `public-images/${Date.now()}-${fileName}`;
-    const imageBlob = await put(imagePath, imageBuffer, {
-      access: "public",
-      contentType: mimeType
-    });
+    const imagePut = await putWithAutoAccess(imagePath, imageBuffer, mimeType);
 
     const metadata = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       imagePath,
       proxyUrl: `/api/public-file?path=${encodeURIComponent(imagePath)}`,
-      imageUrl: imageBlob.url,
-      accessMode: "public",
+      imageUrl: imagePut?.blob?.url || null,
+      accessMode: imagePut.accessMode,
       fileName,
       dataHora,
       utmTexto,
@@ -70,10 +92,7 @@ module.exports = async function handler(req, res) {
 
     const metaPath = `public-meta/${metadata.id}.json`;
     metadata.metaPath = metaPath;
-    await put(metaPath, JSON.stringify(metadata), {
-      access: "public",
-      contentType: "application/json"
-    });
+    await putWithAutoAccess(metaPath, JSON.stringify(metadata), "application/json");
 
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/json");

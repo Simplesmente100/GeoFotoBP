@@ -15,14 +15,16 @@ const galleryGrid = document.getElementById("galleryGrid");
 const galleryStatus = document.getElementById("galleryStatus");
 const btnRefreshGallery = document.getElementById("btnRefreshGallery");
 const btnUploadAll = document.getElementById("btnUploadAll");
+const publicGalleryGrid = document.getElementById("publicGalleryGrid");
+const publicGalleryStatus = document.getElementById("publicGalleryStatus");
+const btnRefreshPublicGallery = document.getElementById("btnRefreshPublicGallery");
 
 const DB_NAME = "geofotobp_db";
 const DB_VERSION = 1;
 const STORE_FOTOS = "fotos";
 
-// Defina aqui a conta/endpoint de nuvem já escolhido para upload.
-const CLOUD_UPLOAD_URL = "https://mega.nz/filerequest/RAYcZ41lCPQ";
-const CLOUD_UPLOAD_TOKEN = "";
+const API_UPLOAD_URL = "/api/public-upload";
+const API_PUBLIC_FEED_URL = "/api/public-feed";
 
 let dbPromise = null;
 let lastBlob = null;
@@ -36,6 +38,10 @@ function setStatus(msg) {
 
 function setGalleryStatus(msg) {
   galleryStatus.textContent = msg;
+}
+
+function setPublicGalleryStatus(msg) {
+  publicGalleryStatus.textContent = msg;
 }
 
 function openDb() {
@@ -80,7 +86,7 @@ async function getFotosLocais() {
   });
 }
 
-async function marcarComoEnviada(id) {
+async function atualizarFotoLocal(id, patch) {
   const db = await openDb();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_FOTOS, "readwrite");
@@ -90,21 +96,12 @@ async function marcarComoEnviada(id) {
     getReq.onsuccess = () => {
       const item = getReq.result;
       if (!item) return;
-      item.uploaded = true;
-      item.uploadedAt = new Date().toISOString();
-      store.put(item);
+      store.put({ ...item, ...patch });
     };
 
     tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error || new Error("Falha ao atualizar status de upload."));
+    tx.onerror = () => reject(tx.error || new Error("Falha ao atualizar item local."));
   });
-}
-
-function formatarDataIsoParaBR(iso) {
-  if (!iso) return "-";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleString("pt-BR");
 }
 
 function ativarAba(nome) {
@@ -115,11 +112,53 @@ function ativarAba(nome) {
   viewGaleria.classList.toggle("hidden", isCaptura);
 
   if (!isCaptura) {
-    renderGaleria().catch((err) => {
-      console.error(err);
-      setGalleryStatus("Erro ao carregar galeria local.");
-    });
+    renderGaleria().catch(console.error);
+    renderGaleriaPublica().catch(console.error);
   }
+}
+
+function formatarDataIsoParaBR(iso) {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleString("pt-BR");
+}
+
+function criarCardGallery(item, isPublic = false) {
+  const card = document.createElement("article");
+  card.className = "gallery-item";
+
+  const img = document.createElement("img");
+  if (isPublic) {
+    img.src = item.url;
+  } else {
+    img.src = URL.createObjectURL(item.blob);
+  }
+  img.alt = "Foto GeoFotoBP";
+
+  const meta = document.createElement("div");
+  meta.className = "gallery-meta";
+  meta.textContent =
+    `Data: ${item.dataHora || "-"}\n` +
+    `${item.utmTexto || "UTM indisponivel"}\n` +
+    `Hash: ${item.hash || "-"}\n` +
+    `${isPublic ? "Origem: Publica" : `Nuvem: ${item.uploaded ? "Enviada" : "Pendente"}`}`;
+
+  const actions = document.createElement("div");
+  actions.className = "actions";
+
+  const btnBaixar = document.createElement("button");
+  btnBaixar.className = "secondary";
+  btnBaixar.textContent = "Baixar";
+  if (isPublic) {
+    btnBaixar.addEventListener("click", () => window.open(item.url, "_blank", "noopener,noreferrer"));
+  } else {
+    btnBaixar.addEventListener("click", () => baixarBlob(item.blob, item.fileName));
+  }
+
+  actions.appendChild(btnBaixar);
+  card.append(img, meta, actions);
+  return card;
 }
 
 async function renderGaleria() {
@@ -134,37 +173,33 @@ async function renderGaleria() {
   }
 
   const pendentes = ordenadas.filter((f) => !f.uploaded).length;
-  setGalleryStatus(`Total local: ${ordenadas.length} | Pendentes de nuvem: ${pendentes}`);
+  setGalleryStatus(`Total local: ${ordenadas.length} | Pendentes para sincronizar: ${pendentes}`);
 
-  ordenadas.forEach((item) => {
-    const card = document.createElement("article");
-    card.className = "gallery-item";
+  ordenadas.forEach((item) => galleryGrid.appendChild(criarCardGallery(item, false)));
+}
 
-    const img = document.createElement("img");
-    const imgUrl = URL.createObjectURL(item.blob);
-    img.src = imgUrl;
-    img.alt = "Foto salva localmente";
+async function renderGaleriaPublica() {
+  publicGalleryGrid.innerHTML = "";
+  setPublicGalleryStatus("Carregando galeria publica...");
 
-    const meta = document.createElement("div");
-    meta.className = "gallery-meta";
-    meta.textContent =
-      `Data: ${item.dataHora}\n` +
-      `${item.utmTexto}\n` +
-      `Hash: ${item.hash}\n` +
-      `Nuvem: ${item.uploaded ? "Enviada" : "Pendente"}`;
+  try {
+    const resp = await fetch(API_PUBLIC_FEED_URL, { cache: "no-store" });
+    if (!resp.ok) throw new Error(`Erro ${resp.status}`);
 
-    const actions = document.createElement("div");
-    actions.className = "actions";
+    const data = await resp.json();
+    const itens = (data.items || []).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
-    const btnBaixar = document.createElement("button");
-    btnBaixar.className = "secondary";
-    btnBaixar.textContent = "Baixar";
-    btnBaixar.addEventListener("click", () => baixarBlob(item.blob, item.fileName));
+    if (!itens.length) {
+      setPublicGalleryStatus("Nenhuma imagem publica ainda.");
+      return;
+    }
 
-    actions.appendChild(btnBaixar);
-    card.append(img, meta, actions);
-    galleryGrid.appendChild(card);
-  });
+    setPublicGalleryStatus(`Galeria publica: ${itens.length} imagem(ns).`);
+    itens.forEach((item) => publicGalleryGrid.appendChild(criarCardGallery(item, true)));
+  } catch (err) {
+    console.error(err);
+    setPublicGalleryStatus("Falha ao carregar galeria publica.");
+  }
 }
 
 async function iniciarCamera() {
@@ -267,12 +302,6 @@ function latLngParaUTM(latitude, longitude) {
   };
 }
 
-async function sha256Hex(texto) {
-  const bytes = new TextEncoder().encode(texto);
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 async function sha256HexArrayBuffer(buffer) {
   const digest = await crypto.subtle.digest("SHA-256", buffer);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -286,6 +315,17 @@ function blobParaArrayBuffer(blob) {
     reader.onerror = () => reject(new Error("Falha ao ler arquivo para hash."));
     reader.readAsArrayBuffer(blob);
   });
+}
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    const sub = bytes.subarray(i, i + chunk);
+    binary += String.fromCharCode.apply(null, sub);
+  }
+  return btoa(binary);
 }
 
 function baixarBlob(blob, nome) {
@@ -370,13 +410,13 @@ async function capturarFoto() {
       hashFileName: `${lastFilenameBase}.sha256.txt`,
       blob,
       uploaded: false,
-      uploadedAt: null
+      uploadedAt: null,
+      publicUrl: null
     });
 
     lastBlob = blob;
     resultadoImg.src = URL.createObjectURL(blob);
-    hashTexto.textContent =
-      `${utmCompleta}\nHash real do arquivo (SHA-256): ${imageHash}`;
+    hashTexto.textContent = `${utmCompleta}\nHash real do arquivo (SHA-256): ${imageHash}`;
 
     btnDownload.disabled = false;
     btnDownloadHash.disabled = false;
@@ -384,6 +424,7 @@ async function capturarFoto() {
     setStatus("Foto gerada e salva localmente com sucesso.");
 
     await renderGaleria();
+    await sincronizarPendentesSeOnline();
   } catch (err) {
     console.error(err);
     alert(`Nao foi possivel capturar a foto: ${err.message}`);
@@ -393,81 +434,73 @@ async function capturarFoto() {
   }
 }
 
-async function uploadRegistroParaNuvem(item, uploadUrl) {
-  const formData = new FormData();
-  const file = new File([item.blob], item.fileName, { type: "image/jpeg" });
-  formData.append("file", file);
-  formData.append(
-    "metadata",
-    JSON.stringify({
-      data_hora: item.dataHora,
-      utm: item.utmTexto,
-      hash: item.hash,
-      origem: "GeoFotoBP"
-    })
-  );
+async function uploadRegistroPublico(item) {
+  const buffer = await blobParaArrayBuffer(item.blob);
+  const imageBase64 = arrayBufferToBase64(buffer);
 
-  const headers = {};
-  if (CLOUD_UPLOAD_TOKEN) headers.Authorization = `Bearer ${CLOUD_UPLOAD_TOKEN}`;
-
-  const resp = await fetch(uploadUrl, {
+  const resp = await fetch(API_UPLOAD_URL, {
     method: "POST",
-    headers,
-    body: formData
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      fileName: item.fileName,
+      mimeType: "image/jpeg",
+      imageBase64,
+      dataHora: item.dataHora || "",
+      utmTexto: item.utmTexto || "",
+      hash: item.hash || "",
+      createdAt: item.createdAt || Date.now()
+    })
   });
 
-  if (!resp.ok) throw new Error(`Falha upload (${resp.status})`);
+  if (!resp.ok) {
+    const txt = await resp.text().catch(() => "");
+    throw new Error(`Falha upload (${resp.status}) ${txt}`);
+  }
+
+  return resp.json();
 }
 
-function isMegaFileRequestUrl(url) {
-  return /https?:\/\/mega\.nz\/filerequest/i.test(url);
-}
-
-async function uploadTodasPendentes() {
-  const uploadUrl = (CLOUD_UPLOAD_URL || "").trim();
-  if (!/^https?:\/\//i.test(uploadUrl)) {
-    alert("Configure CLOUD_UPLOAD_URL com uma URL valida de endpoint HTTP/HTTPS.");
+async function sincronizarPendentesSeOnline() {
+  if (!navigator.onLine) {
+    setGalleryStatus("Sem internet. As imagens permanecem salvas localmente.");
     return;
   }
 
-  if (isMegaFileRequestUrl(uploadUrl)) {
-    setGalleryStatus("Abrindo formulario do MEGA para envio das imagens...");
-    window.open(uploadUrl, "_blank", "noopener,noreferrer");
-    alert("O MEGA File Request nao disponibiliza endpoint de API direta para envio em lote pelo navegador. O formulario do MEGA foi aberto para envio.");
+  const fotos = await getFotosLocais();
+  const pendentes = fotos.filter((f) => !f.uploaded);
+
+  if (!pendentes.length) {
+    await renderGaleriaPublica();
     return;
   }
 
-  setGalleryStatus("Enviando imagens pendentes para nuvem...");
+  setGalleryStatus(`Sincronizando ${pendentes.length} imagem(ns) pendente(s)...`);
   btnUploadAll.disabled = true;
 
-  try {
-    const fotos = await getFotosLocais();
-    const pendentes = fotos.filter((f) => !f.uploaded);
+  let sucesso = 0;
+  let falha = 0;
 
-    if (!pendentes.length) {
-      setGalleryStatus("Nao ha imagens pendentes para upload.");
-      return;
+  for (const item of pendentes) {
+    try {
+      const resposta = await uploadRegistroPublico(item);
+      await atualizarFotoLocal(item.id, {
+        uploaded: true,
+        uploadedAt: new Date().toISOString(),
+        publicUrl: resposta?.item?.url || null
+      });
+      sucesso += 1;
+    } catch (err) {
+      console.error(`Falha no upload da imagem ${item.id}:`, err);
+      falha += 1;
     }
-
-    let sucesso = 0;
-    let falha = 0;
-
-    for (const item of pendentes) {
-      try {
-        await uploadRegistroParaNuvem(item, uploadUrl);
-        await marcarComoEnviada(item.id);
-        sucesso += 1;
-      } catch (err) {
-        console.error(`Falha no upload da imagem ${item.id}:`, err);
-        falha += 1;
-      }
-    }
-
-    setGalleryStatus(`Upload concluido. Sucesso: ${sucesso} | Falhas: ${falha}`);
-    await renderGaleria();
-  } finally {
-    btnUploadAll.disabled = false;
   }
+
+  btnUploadAll.disabled = false;
+  setGalleryStatus(`Sincronizacao concluida. Sucesso: ${sucesso} | Falhas: ${falha}`);
+  await renderGaleria();
+  await renderGaleriaPublica();
 }
 
 btnFoto.addEventListener("click", capturarFoto);
@@ -515,7 +548,12 @@ btnShare.addEventListener("click", async () => {
 tabCaptura.addEventListener("click", () => ativarAba("captura"));
 tabGaleria.addEventListener("click", () => ativarAba("galeria"));
 btnRefreshGallery.addEventListener("click", () => renderGaleria().catch(console.error));
-btnUploadAll.addEventListener("click", () => uploadTodasPendentes().catch(console.error));
+btnRefreshPublicGallery.addEventListener("click", () => renderGaleriaPublica().catch(console.error));
+btnUploadAll.addEventListener("click", () => sincronizarPendentesSeOnline().catch(console.error));
+
+window.addEventListener("online", () => {
+  sincronizarPendentesSeOnline().catch(console.error);
+});
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
@@ -554,3 +592,8 @@ renderGaleria().catch((err) => {
   console.error(err);
   setGalleryStatus("Erro ao carregar galeria local.");
 });
+renderGaleriaPublica().catch((err) => {
+  console.error(err);
+  setPublicGalleryStatus("Erro ao carregar galeria publica.");
+});
+sincronizarPendentesSeOnline().catch(console.error);

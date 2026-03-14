@@ -22,7 +22,10 @@ module.exports = async function handler(req, res) {
     let resolvedImagePath = imagePath;
 
     if (!resolvedMetaPath && id) {
-      const metaList = await list({ prefix: `public-meta/${id}` });
+      const metaList = await list({
+        prefix: `public-meta/${id}`,
+        token: process.env.BLOB_READ_WRITE_TOKEN
+      });
       const metaBlob = (metaList?.blobs || [])[0];
       if (metaBlob?.pathname) {
         resolvedMetaPath = metaBlob.pathname;
@@ -56,7 +59,7 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    await del(targets);
+    await del(targets, { token: process.env.BLOB_READ_WRITE_TOKEN });
 
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/json");

@@ -1,4 +1,13 @@
-const { list } = require("@vercel/blob");
+const { get } = require("@vercel/blob");
+
+async function getCompat(pathname) {
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  try {
+    return await get(pathname, { access: "private", token });
+  } catch (_) {
+    return get(pathname, { access: "public", token });
+  }
+}
 
 module.exports = async function handler(req, res) {
   if (req.method !== "GET") {
@@ -17,16 +26,7 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    const result = await list({ prefix: path });
-    const blob = (result?.blobs || []).find((b) => b.pathname === path) || (result?.blobs || [])[0];
-
-    if (!blob) {
-      res.statusCode = 404;
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ ok: false, error: "Arquivo nao encontrado" }));
-      return;
-    }
-
+    const blob = await getCompat(path);
     const upstream = await fetch(blob.url, { cache: "no-store" });
     if (!upstream.ok) {
       res.statusCode = 502;

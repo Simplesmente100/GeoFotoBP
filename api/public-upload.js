@@ -13,15 +13,15 @@ async function putCompat(path, data, contentType) {
   const errors = [];
 
   try {
-    return await put(path, data, { access: "public", contentType, token });
+    return await put(path, data, { access: "private", contentType, token });
   } catch (err) {
-    errors.push(`[public] ${err?.message || String(err)}`);
+    errors.push(`[private] ${err?.message || String(err)}`);
   }
 
   try {
-    return await put(path, data, { contentType, token });
+    return await put(path, data, { access: "public", contentType, token });
   } catch (err) {
-    errors.push(`[store-default] ${err?.message || String(err)}`);
+    errors.push(`[public] ${err?.message || String(err)}`);
   }
 
   throw new Error(errors.join(" | "));

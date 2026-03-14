@@ -10,6 +10,7 @@ async function readJsonBody(req) {
 
 async function putWithStoreDefault(path, data, contentType) {
   return put(path, data, {
+    access: "public",
     contentType,
     token: process.env.BLOB_READ_WRITE_TOKEN
   });

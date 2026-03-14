@@ -541,52 +541,62 @@ async function uploadRegistroPublico(item) {
 }
 
 async function sincronizarPendentesSeOnline() {
+  btnUploadAll.disabled = false;
+
   if (!navigator.onLine) {
     setGalleryStatus("Sem internet. As imagens permanecem salvas localmente.");
+    btnUploadAll.disabled = false;
     return;
   }
 
-  const fotos = await getFotosLocais();
-  const pendentes = fotos.filter((f) => !f.uploaded);
+  try {
+    const fotos = await getFotosLocais();
+    const pendentes = fotos.filter((f) => !f.uploaded);
 
-  if (!pendentes.length) {
-    await renderGaleriaPublica();
-    return;
-  }
-
-  setGalleryStatus(`Sincronizando ${pendentes.length} imagem(ns) pendente(s)...`);
-  btnUploadAll.disabled = true;
-
-  let sucesso = 0;
-  let falha = 0;
-  let ultimaFalha = "";
-
-  for (const item of pendentes) {
-    try {
-      const resposta = await uploadRegistroPublico(item);
-      await atualizarFotoLocal(item.id, {
-        uploaded: true,
-        uploadedAt: new Date().toISOString(),
-        publicUrl: resposta?.item?.url || null,
-        idPublico: resposta?.item?.id || null,
-        metaPath: resposta?.item?.metaPath || null,
-        imagePath: resposta?.item?.imagePath || null
-      });
-      sucesso += 1;
-    } catch (err) {
-      console.error(`Falha no upload da imagem ${item.id}:`, err);
-      ultimaFalha = err?.message || "Erro desconhecido";
-      falha += 1;
+    if (!pendentes.length) {
+      setGalleryStatus("Nao ha pendentes para sincronizar.");
+      await renderGaleriaPublica();
+      return;
     }
-  }
 
-  btnUploadAll.disabled = false;
-  setGalleryStatus(
-    `Sincronizacao concluida. Sucesso: ${sucesso} | Falhas: ${falha}` +
-      (falha ? ` | Ultima falha: ${ultimaFalha}` : "")
-  );
-  await renderGaleria();
-  await renderGaleriaPublica();
+    setGalleryStatus(`Sincronizando ${pendentes.length} imagem(ns) pendente(s)...`);
+    btnUploadAll.disabled = true;
+
+    let sucesso = 0;
+    let falha = 0;
+    let ultimaFalha = "";
+
+    for (const item of pendentes) {
+      try {
+        const resposta = await uploadRegistroPublico(item);
+        await atualizarFotoLocal(item.id, {
+          uploaded: true,
+          uploadedAt: new Date().toISOString(),
+          publicUrl: resposta?.item?.url || null,
+          idPublico: resposta?.item?.id || null,
+          metaPath: resposta?.item?.metaPath || null,
+          imagePath: resposta?.item?.imagePath || null
+        });
+        sucesso += 1;
+      } catch (err) {
+        console.error(`Falha no upload da imagem ${item.id}:`, err);
+        ultimaFalha = err?.message || "Erro desconhecido";
+        falha += 1;
+      }
+    }
+
+    setGalleryStatus(
+      `Sincronizacao concluida. Sucesso: ${sucesso} | Falhas: ${falha}` +
+        (falha ? ` | Ultima falha: ${ultimaFalha}` : "")
+    );
+    await renderGaleria();
+    await renderGaleriaPublica();
+  } catch (err) {
+    console.error(err);
+    setGalleryStatus(`Erro na sincronizacao: ${err?.message || "erro desconhecido"}`);
+  } finally {
+    btnUploadAll.disabled = false;
+  }
 }
 
 function alternarModoExclusaoSecreto() {

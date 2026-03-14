@@ -45,6 +45,7 @@ module.exports = async function handler(req, res) {
     const metadata = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       url: imageBlob.url,
+      imagePath,
       fileName,
       dataHora,
       utmTexto,
@@ -54,6 +55,7 @@ module.exports = async function handler(req, res) {
     };
 
     const metaPath = `public-meta/${metadata.id}.json`;
+    metadata.metaPath = metaPath;
     await put(metaPath, JSON.stringify(metadata), {
       access: "public",
       contentType: "application/json"

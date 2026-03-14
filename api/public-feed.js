@@ -18,6 +18,7 @@ module.exports = async function handler(req, res) {
         const resp = await fetch(blob.url, { cache: "no-store" });
         if (!resp.ok) continue;
         const data = await resp.json();
+        data.metaPath = data.metaPath || blob.pathname || null;
         items.push(data);
       } catch (_) {
         // Ignora metadados invalidos

@@ -25,12 +25,14 @@ const STORE_FOTOS = "fotos";
 
 const API_UPLOAD_URL = "/api/public-upload";
 const API_PUBLIC_FEED_URL = "/api/public-feed";
+const API_PUBLIC_DELETE_URL = "/api/public-delete";
 
 let dbPromise = null;
 let lastBlob = null;
 let lastFilenameBase = null;
 let lastImageHash = null;
 let refreshing = false;
+let secretDeleteMode = false;
 
 function setStatus(msg) {
   statusEl.textContent = msg;
@@ -104,6 +106,16 @@ async function atualizarFotoLocal(id, patch) {
   });
 }
 
+async function removerFotoLocal(id) {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_FOTOS, "readwrite");
+    tx.objectStore(STORE_FOTOS).delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error || new Error("Falha ao remover item local."));
+  });
+}
+
 function ativarAba(nome) {
   const isCaptura = nome === "captura";
   tabCaptura.classList.toggle("active", isCaptura);
@@ -157,6 +169,22 @@ function criarCardGallery(item, isPublic = false) {
   }
 
   actions.appendChild(btnBaixar);
+
+  if (secretDeleteMode) {
+    const btnExcluir = document.createElement("button");
+    btnExcluir.className = "secondary";
+
+    if (isPublic) {
+      btnExcluir.textContent = "Excluir pública";
+      btnExcluir.addEventListener("click", () => excluirItemPublico(item).catch(console.error));
+      actions.appendChild(btnExcluir);
+    } else if (item.uploaded) {
+      btnExcluir.textContent = "Excluir sincronizada";
+      btnExcluir.addEventListener("click", () => excluirItemSincronizadoLocal(item).catch(console.error));
+      actions.appendChild(btnExcluir);
+    }
+  }
+
   card.append(img, meta, actions);
   return card;
 }
@@ -173,7 +201,10 @@ async function renderGaleria() {
   }
 
   const pendentes = ordenadas.filter((f) => !f.uploaded).length;
-  setGalleryStatus(`Total local: ${ordenadas.length} | Pendentes para sincronizar: ${pendentes}`);
+  setGalleryStatus(
+    `Total local: ${ordenadas.length} | Pendentes para sincronizar: ${pendentes}` +
+      (secretDeleteMode ? " | Modo exclusão ativo (Ctrl + 1)" : "")
+  );
 
   ordenadas.forEach((item) => galleryGrid.appendChild(criarCardGallery(item, false)));
 }
@@ -194,12 +225,59 @@ async function renderGaleriaPublica() {
       return;
     }
 
-    setPublicGalleryStatus(`Galeria publica: ${itens.length} imagem(ns).`);
+    setPublicGalleryStatus(
+      `Galeria publica: ${itens.length} imagem(ns).` +
+        (secretDeleteMode ? " | Modo exclusão ativo (Ctrl + 1)" : "")
+    );
     itens.forEach((item) => publicGalleryGrid.appendChild(criarCardGallery(item, true)));
   } catch (err) {
     console.error(err);
     setPublicGalleryStatus("Falha ao carregar galeria publica.");
   }
+}
+
+async function excluirViaApi(payload) {
+  const resp = await fetch(API_PUBLIC_DELETE_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  if (!resp.ok) {
+    const txt = await resp.text().catch(() => "");
+    throw new Error(`Falha exclusao (${resp.status}) ${txt}`);
+  }
+}
+
+async function excluirItemSincronizadoLocal(item) {
+  const ok = confirm("Deseja excluir esta foto sincronizada da galeria pública e local?");
+  if (!ok) return;
+
+  if (item.metaPath || item.imagePath || item.publicUrl || item.idPublico) {
+    await excluirViaApi({
+      id: item.idPublico || "",
+      metaPath: item.metaPath || "",
+      imagePath: item.imagePath || "",
+      url: item.publicUrl || ""
+    });
+  }
+
+  await removerFotoLocal(item.id);
+  await renderGaleria();
+  await renderGaleriaPublica();
+}
+
+async function excluirItemPublico(item) {
+  const ok = confirm("Deseja excluir esta foto da galeria pública?");
+  if (!ok) return;
+
+  await excluirViaApi({
+    id: item.id || "",
+    metaPath: item.metaPath || "",
+    imagePath: item.imagePath || "",
+    url: item.url || ""
+  });
+
+  await renderGaleriaPublica();
 }
 
 async function iniciarCamera() {
@@ -481,6 +559,7 @@ async function sincronizarPendentesSeOnline() {
 
   let sucesso = 0;
   let falha = 0;
+  let ultimaFalha = "";
 
   for (const item of pendentes) {
     try {
@@ -488,19 +567,37 @@ async function sincronizarPendentesSeOnline() {
       await atualizarFotoLocal(item.id, {
         uploaded: true,
         uploadedAt: new Date().toISOString(),
-        publicUrl: resposta?.item?.url || null
+        publicUrl: resposta?.item?.url || null,
+        idPublico: resposta?.item?.id || null,
+        metaPath: resposta?.item?.metaPath || null,
+        imagePath: resposta?.item?.imagePath || null
       });
       sucesso += 1;
     } catch (err) {
       console.error(`Falha no upload da imagem ${item.id}:`, err);
+      ultimaFalha = err?.message || "Erro desconhecido";
       falha += 1;
     }
   }
 
   btnUploadAll.disabled = false;
-  setGalleryStatus(`Sincronizacao concluida. Sucesso: ${sucesso} | Falhas: ${falha}`);
+  setGalleryStatus(
+    `Sincronizacao concluida. Sucesso: ${sucesso} | Falhas: ${falha}` +
+      (falha ? ` | Ultima falha: ${ultimaFalha}` : "")
+  );
   await renderGaleria();
   await renderGaleriaPublica();
+}
+
+function alternarModoExclusaoSecreto() {
+  secretDeleteMode = !secretDeleteMode;
+  const msg = secretDeleteMode
+    ? "Modo exclusão ativado (Ctrl + 1)."
+    : "Modo exclusão desativado.";
+  setGalleryStatus(msg);
+  setPublicGalleryStatus(msg);
+  renderGaleria().catch(console.error);
+  renderGaleriaPublica().catch(console.error);
 }
 
 btnFoto.addEventListener("click", capturarFoto);
@@ -550,6 +647,15 @@ tabGaleria.addEventListener("click", () => ativarAba("galeria"));
 btnRefreshGallery.addEventListener("click", () => renderGaleria().catch(console.error));
 btnRefreshPublicGallery.addEventListener("click", () => renderGaleriaPublica().catch(console.error));
 btnUploadAll.addEventListener("click", () => sincronizarPendentesSeOnline().catch(console.error));
+
+document.addEventListener("keydown", (event) => {
+  const tag = (event.target && event.target.tagName) || "";
+  if (tag === "INPUT" || tag === "TEXTAREA" || event.target?.isContentEditable) return;
+  if (event.ctrlKey && event.key === "1") {
+    event.preventDefault();
+    alternarModoExclusaoSecreto();
+  }
+});
 
 window.addEventListener("online", () => {
   sincronizarPendentesSeOnline().catch(console.error);

@@ -19,6 +19,9 @@ module.exports = async function handler(req, res) {
         if (!resp.ok) continue;
         const data = await resp.json();
         data.metaPath = data.metaPath || blob.pathname || null;
+        if (data.imagePath && !data.proxyUrl) {
+          data.proxyUrl = `/api/public-file?path=${encodeURIComponent(data.imagePath)}`;
+        }
         items.push(data);
       } catch (_) {
         // Ignora metadados invalidos

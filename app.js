@@ -142,7 +142,7 @@ function criarCardGallery(item, isPublic = false) {
 
   const img = document.createElement("img");
   if (isPublic) {
-    img.src = item.url;
+    img.src = item.proxyUrl || item.url;
   } else {
     img.src = URL.createObjectURL(item.blob);
   }
@@ -163,7 +163,10 @@ function criarCardGallery(item, isPublic = false) {
   btnBaixar.className = "secondary";
   btnBaixar.textContent = "Baixar";
   if (isPublic) {
-    btnBaixar.addEventListener("click", () => window.open(item.url, "_blank", "noopener,noreferrer"));
+    btnBaixar.addEventListener(
+      "click",
+      () => window.open(item.proxyUrl || item.url, "_blank", "noopener,noreferrer")
+    );
   } else {
     btnBaixar.addEventListener("click", () => baixarBlob(item.blob, item.fileName));
   }

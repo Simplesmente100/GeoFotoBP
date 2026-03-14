@@ -49,15 +49,15 @@ module.exports = async function handler(req, res) {
 
     const imageBuffer = Buffer.from(imageBase64, "base64");
     const imagePath = `public-images/${Date.now()}-${fileName}`;
-    const imageBlob = await put(imagePath, imageBuffer, {
-      access: "public",
+    await put(imagePath, imageBuffer, {
+      access: "private",
       contentType: mimeType
     });
 
     const metadata = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
-      url: imageBlob.url,
       imagePath,
+      proxyUrl: `/api/public-file?path=${encodeURIComponent(imagePath)}`,
       fileName,
       dataHora,
       utmTexto,
@@ -69,7 +69,7 @@ module.exports = async function handler(req, res) {
     const metaPath = `public-meta/${metadata.id}.json`;
     metadata.metaPath = metaPath;
     await put(metaPath, JSON.stringify(metadata), {
-      access: "public",
+      access: "private",
       contentType: "application/json"
     });
 

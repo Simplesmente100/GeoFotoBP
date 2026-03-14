@@ -17,6 +17,18 @@ module.exports = async function handler(req, res) {
   }
 
   try {
+    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+      res.statusCode = 500;
+      res.setHeader("Content-Type", "application/json");
+      res.end(
+        JSON.stringify({
+          ok: false,
+          error: "BLOB_READ_WRITE_TOKEN ausente no ambiente de produção."
+        })
+      );
+      return;
+    }
+
     const body = await readJsonBody(req);
     const {
       fileName = `foto-${Date.now()}.jpg`,
@@ -68,6 +80,12 @@ module.exports = async function handler(req, res) {
     console.error(err);
     res.statusCode = 500;
     res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({ ok: false, error: "Falha no upload publico" }));
+    res.end(
+      JSON.stringify({
+        ok: false,
+        error: "Falha no upload publico",
+        details: err?.message || String(err)
+      })
+    );
   }
 };

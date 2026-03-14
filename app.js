@@ -18,6 +18,10 @@ const btnUploadAll = document.getElementById("btnUploadAll");
 const publicGalleryGrid = document.getElementById("publicGalleryGrid");
 const publicGalleryStatus = document.getElementById("publicGalleryStatus");
 const btnRefreshPublicGallery = document.getElementById("btnRefreshPublicGallery");
+const btnModeratorMode = document.getElementById("btnModeratorMode");
+const requestPanel = document.getElementById("requestPanel");
+const requestPanelStatus = document.getElementById("requestPanelStatus");
+const requestPanelList = document.getElementById("requestPanelList");
 
 const DB_NAME = "geofotobp_db";
 const DB_VERSION = 1;
@@ -26,13 +30,17 @@ const STORE_FOTOS = "fotos";
 const API_UPLOAD_URL = "/api/public-upload";
 const API_PUBLIC_FEED_URL = "/api/public-feed";
 const API_PUBLIC_DELETE_URL = "/api/public-delete";
+const API_DELETE_REQUESTS_URL = "/api/delete-requests";
+const MODERATOR_SESSION_KEY = "geofotobp_moderator_session";
+const MODERATOR_SESSION_HOURS = 12;
 
 let dbPromise = null;
 let lastBlob = null;
 let lastFilenameBase = null;
 let lastImageHash = null;
 let refreshing = false;
-let secretDeleteMode = false;
+let moderatorMode = false;
+let pendingDeleteRequests = [];
 
 function setStatus(msg) {
   statusEl.textContent = msg;
@@ -44,6 +52,41 @@ function setGalleryStatus(msg) {
 
 function setPublicGalleryStatus(msg) {
   publicGalleryStatus.textContent = msg;
+}
+
+function setRequestPanelStatus(msg) {
+  if (requestPanelStatus) requestPanelStatus.textContent = msg;
+}
+
+function setModeratorVisualState() {
+  if (!btnModeratorMode) return;
+  btnModeratorMode.classList.toggle("is-active", moderatorMode);
+  btnModeratorMode.title = moderatorMode ? "Modo moderador ativo" : "Entrar no modo moderador";
+}
+
+function salvarSessaoModerador() {
+  const expiresAt = Date.now() + MODERATOR_SESSION_HOURS * 60 * 60 * 1000;
+  localStorage.setItem(MODERATOR_SESSION_KEY, JSON.stringify({ expiresAt }));
+}
+
+function limparSessaoModerador() {
+  localStorage.removeItem(MODERATOR_SESSION_KEY);
+}
+
+function carregarSessaoModerador() {
+  try {
+    const raw = localStorage.getItem(MODERATOR_SESSION_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.expiresAt || Date.now() > parsed.expiresAt) {
+      limparSessaoModerador();
+      return false;
+    }
+    return true;
+  } catch (_) {
+    limparSessaoModerador();
+    return false;
+  }
 }
 
 function openDb() {
@@ -136,6 +179,174 @@ function formatarDataIsoParaBR(iso) {
   return d.toLocaleString("pt-BR");
 }
 
+async function validarSenhaModerador(password) {
+  const resp = await fetch(API_DELETE_REQUESTS_URL, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "auth", password })
+  });
+  if (!resp.ok) return false;
+  const data = await resp.json().catch(() => ({}));
+  return Boolean(data?.ok);
+}
+
+async function entrarOuSairModoModerador() {
+  if (moderatorMode) {
+    moderatorMode = false;
+    limparSessaoModerador();
+    pendingDeleteRequests = [];
+    setModeratorVisualState();
+    requestPanel.classList.add("hidden");
+    setGalleryStatus("Modo moderador desativado.");
+    setPublicGalleryStatus("Modo moderador desativado.");
+    await renderGaleria();
+    await renderGaleriaPublica();
+    return;
+  }
+
+  const password = prompt("Digite a senha para entrar no modo moderador:");
+  if (!password) return;
+
+  try {
+    const ok = await validarSenhaModerador(password.trim());
+    if (!ok) {
+      alert("Senha incorreta.");
+      return;
+    }
+    moderatorMode = true;
+    salvarSessaoModerador();
+    setModeratorVisualState();
+    setGalleryStatus("Modo moderador ativado.");
+    await carregarSolicitacoesExclusao();
+    await renderGaleria();
+    await renderGaleriaPublica();
+  } catch (err) {
+    console.error(err);
+    alert("Falha ao validar senha de moderador.");
+  }
+}
+
+async function carregarSolicitacoesExclusao() {
+  if (!moderatorMode) {
+    pendingDeleteRequests = [];
+    requestPanel.classList.add("hidden");
+    return;
+  }
+
+  setRequestPanelStatus("Carregando solicitacoes...");
+  requestPanel.classList.remove("hidden");
+
+  try {
+    const resp = await fetch(`${API_DELETE_REQUESTS_URL}?status=pending`, { cache: "no-store" });
+    if (!resp.ok) throw new Error(`Erro ${resp.status}`);
+    const data = await resp.json();
+    pendingDeleteRequests = (data.items || []).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    if (!pendingDeleteRequests.length) {
+      setRequestPanelStatus("Nao ha solicitacoes pendentes.");
+    } else {
+      setRequestPanelStatus(`Solicitacoes pendentes: ${pendingDeleteRequests.length}`);
+    }
+    renderPainelSolicitacoes();
+  } catch (err) {
+    console.error(err);
+    setRequestPanelStatus("Falha ao carregar solicitacoes.");
+  }
+}
+
+function renderPainelSolicitacoes() {
+  if (!requestPanelList) return;
+  requestPanelList.innerHTML = "";
+  if (!moderatorMode || !pendingDeleteRequests.length) return;
+
+  pendingDeleteRequests.forEach((request) => {
+    const item = document.createElement("div");
+    item.className = "request-item";
+
+    const meta = document.createElement("div");
+    meta.className = "gallery-meta";
+    meta.textContent =
+      `Solicitada em: ${formatarDataIsoParaBR(request.createdAtIso)}\n` +
+      `Arquivo: ${request.fileName || "-"}\n` +
+      `Data da imagem: ${request.dataHora || "-"}\n` +
+      `Motivo: ${request.reason || "Nao informado"}`;
+
+    const actions = document.createElement("div");
+    actions.className = "actions";
+
+    const btnAprovar = document.createElement("button");
+    btnAprovar.className = "secondary";
+    btnAprovar.textContent = "Excluir imagem";
+    btnAprovar.addEventListener("click", () => moderarSolicitacao(request, "approve").catch(console.error));
+
+    const btnRecusar = document.createElement("button");
+    btnRecusar.className = "secondary";
+    btnRecusar.textContent = "Recusar";
+    btnRecusar.addEventListener("click", () => moderarSolicitacao(request, "reject").catch(console.error));
+
+    actions.append(btnAprovar, btnRecusar);
+    item.append(meta, actions);
+    requestPanelList.appendChild(item);
+  });
+}
+
+async function moderarSolicitacao(request, action) {
+  const password = prompt("Confirme a senha do moderador:");
+  if (!password) return;
+
+  const resp = await fetch(API_DELETE_REQUESTS_URL, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action,
+      password: password.trim(),
+      requestId: request.id,
+      requestPath: request.requestPath,
+      imagePath: request.imagePath,
+      metaPath: request.metaPath
+    })
+  });
+
+  if (!resp.ok) {
+    const txt = await resp.text().catch(() => "");
+    throw new Error(`Falha ao moderar (${resp.status}) ${txt}`);
+  }
+
+  await carregarSolicitacoesExclusao();
+  await renderGaleria();
+  await renderGaleriaPublica();
+}
+
+async function solicitarExclusaoImagem(item) {
+  const reason = prompt("Opcional: informe o motivo da solicitacao de exclusao:", "") || "";
+  const payload = {
+    action: "request",
+    imagePath: item.imagePath || "",
+    metaPath: item.metaPath || "",
+    fileName: item.fileName || "",
+    dataHora: item.dataHora || "",
+    reason: reason.trim()
+  };
+
+  const resp = await fetch(API_DELETE_REQUESTS_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  if (!resp.ok) {
+    const txt = await resp.text().catch(() => "");
+    throw new Error(`Falha ao solicitar exclusao (${resp.status}) ${txt}`);
+  }
+
+  const data = await resp.json().catch(() => ({}));
+  if (data?.item?.imagePath) {
+    pendingDeleteRequests.push(data.item);
+  }
+  alert(data?.duplicate ? "Esta imagem ja possui solicitacao pendente." : "Solicitacao enviada com sucesso.");
+  if (moderatorMode) await carregarSolicitacoesExclusao();
+  await renderGaleriaPublica();
+}
+
 function criarCardGallery(item, isPublic = false) {
   const card = document.createElement("article");
   card.className = "gallery-item";
@@ -173,7 +384,17 @@ function criarCardGallery(item, isPublic = false) {
 
   actions.appendChild(btnBaixar);
 
-  if (secretDeleteMode) {
+  if (isPublic) {
+    const jaSolicitada = pendingDeleteRequests.some((req) => req.imagePath === item.imagePath);
+    const btnSolicitar = document.createElement("button");
+    btnSolicitar.className = "secondary";
+    btnSolicitar.textContent = jaSolicitada ? "Exclusao solicitada" : "Solicitar exclusao de imagem";
+    btnSolicitar.disabled = jaSolicitada;
+    btnSolicitar.addEventListener("click", () => solicitarExclusaoImagem(item).catch(console.error));
+    actions.appendChild(btnSolicitar);
+  }
+
+  if (moderatorMode) {
     const btnExcluir = document.createElement("button");
     btnExcluir.className = "secondary";
 
@@ -206,7 +427,7 @@ async function renderGaleria() {
   const pendentes = ordenadas.filter((f) => !f.uploaded).length;
   setGalleryStatus(
     `Total local: ${ordenadas.length} | Pendentes para sincronizar: ${pendentes}` +
-      (secretDeleteMode ? " | Modo exclusão ativo (Ctrl + 1)" : "")
+      (moderatorMode ? " | Modo moderador ativo" : "")
   );
 
   ordenadas.forEach((item) => galleryGrid.appendChild(criarCardGallery(item, false)));
@@ -215,6 +436,9 @@ async function renderGaleria() {
 async function renderGaleriaPublica() {
   publicGalleryGrid.innerHTML = "";
   setPublicGalleryStatus("Carregando galeria publica...");
+  if (!moderatorMode) {
+    requestPanel.classList.add("hidden");
+  }
 
   try {
     const resp = await fetch(API_PUBLIC_FEED_URL, { cache: "no-store" });
@@ -230,7 +454,7 @@ async function renderGaleriaPublica() {
 
     setPublicGalleryStatus(
       `Galeria publica: ${itens.length} imagem(ns).` +
-        (secretDeleteMode ? " | Modo exclusão ativo (Ctrl + 1)" : "")
+        (moderatorMode ? " | Modo moderador ativo" : "")
     );
     itens.forEach((item) => publicGalleryGrid.appendChild(criarCardGallery(item, true)));
   } catch (err) {
@@ -602,17 +826,6 @@ async function sincronizarPendentesSeOnline() {
   }
 }
 
-function alternarModoExclusaoSecreto() {
-  secretDeleteMode = !secretDeleteMode;
-  const msg = secretDeleteMode
-    ? "Modo exclusão ativado (Ctrl + 1)."
-    : "Modo exclusão desativado.";
-  setGalleryStatus(msg);
-  setPublicGalleryStatus(msg);
-  renderGaleria().catch(console.error);
-  renderGaleriaPublica().catch(console.error);
-}
-
 btnFoto.addEventListener("click", capturarFoto);
 
 btnDownload.addEventListener("click", () => {
@@ -660,15 +873,7 @@ tabGaleria.addEventListener("click", () => ativarAba("galeria"));
 btnRefreshGallery.addEventListener("click", () => renderGaleria().catch(console.error));
 btnRefreshPublicGallery.addEventListener("click", () => renderGaleriaPublica().catch(console.error));
 btnUploadAll.addEventListener("click", () => sincronizarPendentesSeOnline().catch(console.error));
-
-document.addEventListener("keydown", (event) => {
-  const tag = (event.target && event.target.tagName) || "";
-  if (tag === "INPUT" || tag === "TEXTAREA" || event.target?.isContentEditable) return;
-  if (event.ctrlKey && event.key === "1") {
-    event.preventDefault();
-    alternarModoExclusaoSecreto();
-  }
-});
+btnModeratorMode.addEventListener("click", () => entrarOuSairModoModerador().catch(console.error));
 
 window.addEventListener("online", () => {
   sincronizarPendentesSeOnline().catch(console.error);
@@ -707,6 +912,8 @@ if ("serviceWorker" in navigator) {
 }
 
 iniciarCamera();
+moderatorMode = carregarSessaoModerador();
+setModeratorVisualState();
 renderGaleria().catch((err) => {
   console.error(err);
   setGalleryStatus("Erro ao carregar galeria local.");
@@ -715,4 +922,5 @@ renderGaleriaPublica().catch((err) => {
   console.error(err);
   setPublicGalleryStatus("Erro ao carregar galeria publica.");
 });
+carregarSolicitacoesExclusao().catch(console.error);
 sincronizarPendentesSeOnline().catch(console.error);

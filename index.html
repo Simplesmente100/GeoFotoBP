@@ -111,6 +111,7 @@
       border: 0;
     }
 
+    .hidden { display: none; }
     .view.hidden { display: none; }
 
     .video-wrap {
@@ -232,6 +233,46 @@
       word-break: break-word;
     }
 
+    .moderator-fab {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      border: 1px solid #f3cc72;
+      background: linear-gradient(180deg, #ffc425, var(--primary));
+      color: #fff;
+      font-size: 1.35rem;
+      z-index: 999;
+      box-shadow: 0 10px 22px rgba(146, 97, 0, 0.24);
+    }
+
+    .moderator-fab.is-active {
+      background: linear-gradient(180deg, #f4d23f, #7db63a);
+      border-color: #9fca58;
+    }
+
+    .request-panel {
+      margin-top: 12px;
+      border: 1px solid #efd18c;
+      border-radius: 12px;
+      background: #fffdf6;
+      padding: 10px;
+    }
+
+    .request-item {
+      border-top: 1px dashed #efd18c;
+      padding-top: 8px;
+      margin-top: 8px;
+    }
+
+    .request-item:first-child {
+      border-top: 0;
+      margin-top: 0;
+      padding-top: 0;
+    }
+
     @media (max-width: 640px) {
       .actions { flex-direction: column; }
       button { width: 100%; }
@@ -303,12 +344,18 @@
         <div class="actions">
           <button id="btnRefreshPublicGallery" class="secondary">Atualizar galeria publica</button>
         </div>
+        <div id="requestPanel" class="request-panel hidden">
+          <div id="requestPanelStatus" class="status">Carregando solicitacoes...</div>
+          <div id="requestPanelList"></div>
+        </div>
         <div id="publicGalleryGrid" class="gallery-grid"></div>
       </section>
     </section>
 
     <p class="rodape">Site criado por Lucas Moreira</p>
   </main>
+
+  <button id="btnModeratorMode" class="moderator-fab" title="Modo moderador">🔐</button>
 
   <script src="app.js"></script>
 </body>

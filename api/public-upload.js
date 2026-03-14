@@ -14,11 +14,30 @@ function getAccessMode() {
 }
 
 async function putWithMode(path, data, contentType, accessMode) {
-  return put(path, data, {
-    access: accessMode,
-    contentType,
-    token: process.env.BLOB_READ_WRITE_TOKEN
-  });
+  const primaryMode = accessMode === "private" ? "private" : "public";
+  const fallbackMode = primaryMode === "public" ? "private" : "public";
+
+  try {
+    return await put(path, data, {
+      access: primaryMode,
+      contentType,
+      token: process.env.BLOB_READ_WRITE_TOKEN
+    });
+  } catch (firstErr) {
+    const msg = String(firstErr?.message || "");
+    const shouldRetry =
+      msg.includes('access must be "public"') ||
+      msg.includes("private store") ||
+      msg.includes("public access");
+
+    if (!shouldRetry) throw firstErr;
+
+    return put(path, data, {
+      access: fallbackMode,
+      contentType,
+      token: process.env.BLOB_READ_WRITE_TOKEN
+    });
+  }
 }
 
 module.exports = async function handler(req, res) {

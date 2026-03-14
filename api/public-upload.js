@@ -8,26 +8,6 @@ async function readJsonBody(req) {
   return JSON.parse(raw || "{}");
 }
 
-async function putAutoAccess(path, data, contentType) {
-  try {
-    const blob = await put(path, data, {
-      access: "public",
-      contentType
-    });
-    return { blob, accessMode: "public" };
-  } catch (err) {
-    const msg = err?.message || "";
-    if (msg.includes("Cannot use public access on a private store")) {
-      const blob = await put(path, data, {
-        access: "private",
-        contentType
-      });
-      return { blob, accessMode: "private" };
-    }
-    throw err;
-  }
-}
-
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
     res.statusCode = 405;
@@ -69,14 +49,17 @@ module.exports = async function handler(req, res) {
 
     const imageBuffer = Buffer.from(imageBase64, "base64");
     const imagePath = `public-images/${Date.now()}-${fileName}`;
-    const imagePut = await putAutoAccess(imagePath, imageBuffer, mimeType);
+    const imageBlob = await put(imagePath, imageBuffer, {
+      access: "public",
+      contentType: mimeType
+    });
 
     const metadata = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       imagePath,
       proxyUrl: `/api/public-file?path=${encodeURIComponent(imagePath)}`,
-      imageUrl: imagePut?.blob?.url || null,
-      accessMode: imagePut.accessMode,
+      imageUrl: imageBlob.url,
+      accessMode: "public",
       fileName,
       dataHora,
       utmTexto,
@@ -87,7 +70,10 @@ module.exports = async function handler(req, res) {
 
     const metaPath = `public-meta/${metadata.id}.json`;
     metadata.metaPath = metaPath;
-    await putAutoAccess(metaPath, JSON.stringify(metadata), "application/json");
+    await put(metaPath, JSON.stringify(metadata), {
+      access: "public",
+      contentType: "application/json"
+    });
 
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/json");

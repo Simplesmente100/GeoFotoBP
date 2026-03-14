@@ -24,19 +24,17 @@ async function putWithMode(path, data, contentType, accessMode) {
       token: process.env.BLOB_READ_WRITE_TOKEN
     });
   } catch (firstErr) {
-    const msg = String(firstErr?.message || "");
-    const shouldRetry =
-      msg.includes('access must be "public"') ||
-      msg.includes("private store") ||
-      msg.includes("public access");
-
-    if (!shouldRetry) throw firstErr;
-
-    return put(path, data, {
-      access: fallbackMode,
-      contentType,
-      token: process.env.BLOB_READ_WRITE_TOKEN
-    });
+    try {
+      return await put(path, data, {
+        access: fallbackMode,
+        contentType,
+        token: process.env.BLOB_READ_WRITE_TOKEN
+      });
+    } catch (secondErr) {
+      const firstMsg = String(firstErr?.message || "");
+      const secondMsg = String(secondErr?.message || "");
+      throw new Error(`Falha nos dois modos de access. [${primaryMode}] ${firstMsg} | [${fallbackMode}] ${secondMsg}`);
+    }
   }
 }
 

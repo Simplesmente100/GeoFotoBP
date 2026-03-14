@@ -1,5 +1,14 @@
 const { list } = require("@vercel/blob");
 
+function buildBlobFetchOptions() {
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  if (!token) return { cache: "no-store" };
+  return {
+    cache: "no-store",
+    headers: { Authorization: `Bearer ${token}` }
+  };
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== "GET") {
     res.statusCode = 405;
@@ -26,7 +35,7 @@ module.exports = async function handler(req, res) {
       res.end(JSON.stringify({ ok: false, error: "Arquivo nao encontrado" }));
       return;
     }
-    const upstream = await fetch(blob.url, { cache: "no-store" });
+    const upstream = await fetch(blob.url, buildBlobFetchOptions());
     if (!upstream.ok) {
       res.statusCode = 502;
       res.setHeader("Content-Type", "application/json");

@@ -1,5 +1,14 @@
 const { list } = require("@vercel/blob");
 
+function buildBlobFetchOptions() {
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  if (!token) return { cache: "no-store" };
+  return {
+    cache: "no-store",
+    headers: { Authorization: `Bearer ${token}` }
+  };
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== "GET") {
     res.statusCode = 405;
@@ -15,7 +24,7 @@ module.exports = async function handler(req, res) {
     const items = [];
     for (const blob of blobs) {
       try {
-        const resp = await fetch(blob.url, { cache: "no-store" });
+        const resp = await fetch(blob.url, buildBlobFetchOptions());
         if (!resp.ok) continue;
         const data = await resp.json();
         data.metaPath = data.metaPath || blob.pathname || null;

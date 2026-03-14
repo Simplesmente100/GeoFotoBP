@@ -6,6 +6,15 @@ async function readJsonBody(req) {
   return JSON.parse(raw || "{}");
 }
 
+function buildBlobFetchOptions() {
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  if (!token) return { cache: "no-store" };
+  return {
+    cache: "no-store",
+    headers: { Authorization: `Bearer ${token}` }
+  };
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
     res.statusCode = 405;
@@ -27,7 +36,7 @@ module.exports = async function handler(req, res) {
       if (metaBlob?.pathname) {
         resolvedMetaPath = metaBlob.pathname;
         try {
-          const r = await fetch(metaBlob.url, { cache: "no-store" });
+          const r = await fetch(metaBlob.url, buildBlobFetchOptions());
           if (r.ok) {
             const m = await r.json();
             resolvedImagePath = resolvedImagePath || m.imagePath || "";

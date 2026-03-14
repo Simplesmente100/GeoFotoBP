@@ -8,8 +8,17 @@ async function readJsonBody(req) {
   return JSON.parse(raw || "{}");
 }
 
-async function putPrivate(path, data, contentType) {
-  return put(path, data, { access: "private", contentType });
+function getAccessMode() {
+  const mode = String(process.env.BLOB_ACCESS_MODE || "public").toLowerCase();
+  return mode === "private" ? "private" : "public";
+}
+
+async function putWithMode(path, data, contentType, accessMode) {
+  return put(path, data, {
+    access: accessMode,
+    contentType,
+    token: process.env.BLOB_READ_WRITE_TOKEN
+  });
 }
 
 module.exports = async function handler(req, res) {
@@ -51,16 +60,17 @@ module.exports = async function handler(req, res) {
       return;
     }
 
+    const accessMode = getAccessMode();
     const imageBuffer = Buffer.from(imageBase64, "base64");
     const imagePath = `public-images/${Date.now()}-${fileName}`;
-    const imageBlob = await putPrivate(imagePath, imageBuffer, mimeType);
+    const imageBlob = await putWithMode(imagePath, imageBuffer, mimeType, accessMode);
 
     const metadata = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       imagePath,
       proxyUrl: `/api/public-file?path=${encodeURIComponent(imagePath)}`,
       imageUrl: imageBlob?.url || null,
-      accessMode: "private",
+      accessMode,
       fileName,
       dataHora,
       utmTexto,
@@ -71,7 +81,7 @@ module.exports = async function handler(req, res) {
 
     const metaPath = `public-meta/${metadata.id}.json`;
     metadata.metaPath = metaPath;
-    await putPrivate(metaPath, JSON.stringify(metadata), "application/json");
+    await putWithMode(metaPath, JSON.stringify(metadata), "application/json", accessMode);
 
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/json");
@@ -84,7 +94,8 @@ module.exports = async function handler(req, res) {
       JSON.stringify({
         ok: false,
         error: "Falha no upload publico",
-        details: err?.message || String(err)
+        details: err?.message || String(err),
+        hint: "Defina BLOB_ACCESS_MODE como public ou private no Vercel e refaca o deploy."
       })
     );
   }

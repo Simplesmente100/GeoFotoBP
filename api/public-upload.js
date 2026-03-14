@@ -8,8 +8,8 @@ async function readJsonBody(req) {
   return JSON.parse(raw || "{}");
 }
 
-async function putPublic(path, data, contentType) {
-  return put(path, data, { access: "public", contentType });
+async function putPrivate(path, data, contentType) {
+  return put(path, data, { access: "private", contentType });
 }
 
 module.exports = async function handler(req, res) {
@@ -53,14 +53,14 @@ module.exports = async function handler(req, res) {
 
     const imageBuffer = Buffer.from(imageBase64, "base64");
     const imagePath = `public-images/${Date.now()}-${fileName}`;
-    const imageBlob = await putPublic(imagePath, imageBuffer, mimeType);
+    const imageBlob = await putPrivate(imagePath, imageBuffer, mimeType);
 
     const metadata = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       imagePath,
       proxyUrl: `/api/public-file?path=${encodeURIComponent(imagePath)}`,
       imageUrl: imageBlob?.url || null,
-      accessMode: "public",
+      accessMode: "private",
       fileName,
       dataHora,
       utmTexto,
@@ -71,7 +71,7 @@ module.exports = async function handler(req, res) {
 
     const metaPath = `public-meta/${metadata.id}.json`;
     metadata.metaPath = metaPath;
-    await putPublic(metaPath, JSON.stringify(metadata), "application/json");
+    await putPrivate(metaPath, JSON.stringify(metadata), "application/json");
 
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/json");

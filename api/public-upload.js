@@ -9,17 +9,16 @@ async function readJsonBody(req) {
 }
 
 async function putCompat(path, data, contentType) {
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
   const errors = [];
 
   try {
-    return await put(path, data, { access: "private", contentType, token });
+    return await put(path, data, { access: "private", contentType });
   } catch (err) {
     errors.push(`[private] ${err?.message || String(err)}`);
   }
 
   try {
-    return await put(path, data, { access: "public", contentType, token });
+    return await put(path, data, { access: "public", contentType });
   } catch (err) {
     errors.push(`[public] ${err?.message || String(err)}`);
   }

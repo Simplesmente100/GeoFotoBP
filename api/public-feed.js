@@ -1,13 +1,4 @@
-const { list, get } = require("@vercel/blob");
-
-async function getCompat(pathname) {
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
-  try {
-    return await get(pathname, { access: "private", token });
-  } catch (_) {
-    return get(pathname, { access: "public", token });
-  }
-}
+const { list } = require("@vercel/blob");
 
 module.exports = async function handler(req, res) {
   if (req.method !== "GET") {
@@ -18,14 +9,13 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const result = await list({ prefix: "public-meta/", token: process.env.BLOB_READ_WRITE_TOKEN });
+    const result = await list({ prefix: "public-meta/" });
     const blobs = result?.blobs || [];
 
     const items = [];
     for (const blob of blobs) {
       try {
-        const blobData = await getCompat(blob.pathname);
-        const resp = await fetch(blobData.url, { cache: "no-store" });
+        const resp = await fetch(blob.url, { cache: "no-store" });
         if (!resp.ok) continue;
         const data = await resp.json();
         data.metaPath = data.metaPath || blob.pathname || null;

@@ -1,9 +1,10 @@
-const CACHE_VERSION = "v15";
+const CACHE_VERSION = "v16";
 const CACHE_NAME = `geofotobp-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   "./",
   "./index.html",
   "./app.js",
+  "./app.js?v=20260317-rotulos",
   "./manifest.json",
   "./logo-placeholder.png",
   "./logo-municipio-bp.png"

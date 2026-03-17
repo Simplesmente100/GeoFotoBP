@@ -586,7 +586,7 @@ async function buscarCidadeELocalidade(lat, lng) {
     return extrairCidadeELocalidade(data.address || {});
   } catch (_) {
     return {
-      cidade: "Cidade indisponivel",
+      cidade: "Municipio indisponivel",
       localidade: "Localidade indisponivel"
     };
   } finally {
@@ -707,7 +707,7 @@ async function capturarFoto() {
 
     let utmTexto = "UTM indisponivel";
     let utmCompleta = "UTM indisponivel";
-    let cidade = "Cidade indisponivel";
+    let cidade = "Municipio indisponivel";
     let localidade = "Localidade indisponivel";
 
     try {
@@ -723,7 +723,7 @@ async function capturarFoto() {
     }
 
     const dataHora = dataHoraBR();
-    const linhasPrincipais = [`Data: ${dataHora}`, utmTexto, `Cidade: ${cidade}`, `Localidade: ${localidade}`];
+    const linhasPrincipais = [`Data: ${dataHora}`, utmTexto, `Municipio: ${cidade}`, `Localidade: ${localidade}`];
 
     ctx.fillStyle = "#fff";
     ctx.strokeStyle = "#000";
@@ -768,7 +768,7 @@ async function capturarFoto() {
     lastBlob = blob;
     resultadoImg.src = URL.createObjectURL(blob);
     hashTexto.textContent =
-      `${utmCompleta}\nCidade: ${cidade}\nLocalidade: ${localidade}\nHash real do arquivo (SHA-256): ${imageHash}`;
+      `${utmCompleta}\nMunicipio: ${cidade}\nLocalidade: ${localidade}\nHash real do arquivo (SHA-256): ${imageHash}`;
 
     btnDownload.disabled = false;
     btnDownloadHash.disabled = false;

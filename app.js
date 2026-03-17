@@ -41,9 +41,6 @@ let lastImageHash = null;
 let refreshing = false;
 let moderatorMode = false;
 let pendingDeleteRequests = [];
-let currentHeadingDeg = null;
-let orientationPermissionAttempted = false;
-let orientationListening = false;
 
 function setStatus(msg) {
   statusEl.textContent = msg;
@@ -75,75 +72,6 @@ function formatarDataHoraOverlay() {
 function formatarCoordenadaHemisphere(value, positive, negative) {
   const abs = Math.abs(value).toFixed(7);
   return `${abs}${value >= 0 ? positive : negative}`;
-}
-
-function headingParaCardinal(heading) {
-  const normalized = ((heading % 360) + 360) % 360;
-  const directions = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
-  return directions[Math.round(normalized / 45) % 8];
-}
-
-function formatarHeading(heading) {
-  if (typeof heading !== "number" || Number.isNaN(heading)) return "Sem orientacao";
-  const normalized = ((heading % 360) + 360) % 360;
-  return `${Math.round(normalized)}° ${headingParaCardinal(normalized)}`;
-}
-
-function atualizarHeading(event) {
-  if (typeof event.webkitCompassHeading === "number") {
-    currentHeadingDeg = event.webkitCompassHeading;
-    return;
-  }
-
-  if (typeof event.alpha === "number") {
-    currentHeadingDeg = 360 - event.alpha;
-  }
-}
-
-async function garantirOrientacao() {
-  if (orientationListening) return;
-
-  const handler = (event) => atualizarHeading(event);
-  const OrientationEventApi = window.DeviceOrientationEvent;
-  if (!OrientationEventApi) return;
-
-  if (
-    typeof OrientationEventApi.requestPermission === "function" &&
-    !orientationPermissionAttempted
-  ) {
-    orientationPermissionAttempted = true;
-    try {
-      const permission = await OrientationEventApi.requestPermission();
-      if (permission !== "granted") return;
-    } catch (_) {
-      return;
-    }
-  }
-
-  window.addEventListener("deviceorientationabsolute", handler, true);
-  window.addEventListener("deviceorientation", handler, true);
-  orientationListening = true;
-}
-
-async function esperarPrimeiraOrientacao(timeoutMs = 1800) {
-  if (typeof currentHeadingDeg === "number") return currentHeadingDeg;
-  await garantirOrientacao();
-  if (typeof currentHeadingDeg === "number") return currentHeadingDeg;
-
-  return new Promise((resolve) => {
-    const start = Date.now();
-    const timer = window.setInterval(() => {
-      if (typeof currentHeadingDeg === "number") {
-        window.clearInterval(timer);
-        resolve(currentHeadingDeg);
-        return;
-      }
-      if (Date.now() - start >= timeoutMs) {
-        window.clearInterval(timer);
-        resolve(null);
-      }
-    }, 120);
-  });
 }
 
 function recortarTexto(ctx, text, maxWidth) {
@@ -283,52 +211,6 @@ async function gerarMiniMapa(lat, lng, size = 260, zoom = 18) {
   return mapCanvas;
 }
 
-function desenharBussola(ctx, heading, x, y, size) {
-  const radius = size / 2;
-  ctx.save();
-  ctx.translate(x + radius, y + radius);
-
-  ctx.fillStyle = "rgba(20, 20, 20, 0.45)";
-  ctx.beginPath();
-  ctx.arc(0, 0, radius, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.lineWidth = Math.max(10, size * 0.08);
-  ctx.strokeStyle = "rgba(45, 45, 45, 0.9)";
-  ctx.beginPath();
-  ctx.arc(0, 0, radius - ctx.lineWidth / 2, Math.PI * 0.15, Math.PI * 1.85);
-  ctx.stroke();
-
-  ctx.fillStyle = "#ffffff";
-  ctx.font = `700 ${Math.round(size * 0.12)}px system-ui, sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  const labels = [
-    { text: "N", angle: -90 },
-    { text: "E", angle: 0 },
-    { text: "S", angle: 90 },
-    { text: "W", angle: 180 }
-  ];
-  labels.forEach(({ text, angle }) => {
-    const rad = (angle * Math.PI) / 180;
-    const tx = Math.cos(rad) * (radius - size * 0.12);
-    const ty = Math.sin(rad) * (radius - size * 0.12);
-    ctx.fillText(text, tx, ty);
-  });
-
-  const normalized = typeof heading === "number" ? ((heading % 360) + 360) % 360 : 0;
-  ctx.rotate((normalized * Math.PI) / 180);
-  ctx.fillStyle = "#00c6f7";
-  ctx.beginPath();
-  ctx.moveTo(0, -(radius - size * 0.14));
-  ctx.lineTo(size * 0.09, size * 0.16);
-  ctx.lineTo(-size * 0.09, size * 0.16);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.restore();
-}
-
 function desenharMiniMapaNaFoto(ctx, mapCanvas, x, y, size) {
   ctx.save();
   ctx.fillStyle = "rgba(255,255,255,0.78)";
@@ -344,7 +226,6 @@ function desenharBlocoInfo(ctx, info, x, y, maxWidth, lineHeight) {
   const lines = [
     info.dataHora,
     info.coordenadas,
-    info.heading,
     info.endereco1,
     info.endereco2
   ].filter(Boolean);
@@ -960,8 +841,7 @@ function baixarTexto(conteudo, nomeArquivo) {
 async function capturarFoto() {
   try {
     btnFoto.disabled = true;
-    setStatus("Capturando foto, orientacao e localizacao...");
-    await garantirOrientacao();
+    setStatus("Capturando foto e localizacao...");
 
     if (!video.videoWidth || !video.videoHeight) {
       throw new Error("A camera ainda nao esta pronta.");
@@ -1001,18 +881,14 @@ async function capturarFoto() {
       alert("Permissao de localizacao negada ou indisponivel. A foto sera gerada sem coordenadas precisas.");
     }
 
-    const heading = await esperarPrimeiraOrientacao();
     const dataHora = dataHoraBR();
     const dataHoraOverlay = formatarDataHoraOverlay();
     const margem = Math.max(24, Math.round(w * 0.02));
-    const compassSize = Math.max(120, Math.round(Math.min(w, h) * 0.14));
     const mapSize = Math.max(220, Math.round(Math.min(w, h) * 0.3));
     const mapX = margem;
     const mapY = h - margem - mapSize;
     const infoX = w - margem;
-    const infoY = h - margem - 180;
-
-    desenharBussola(ctx, heading, margem, margem, compassSize);
+    const infoY = h - margem - 142;
 
     if (miniMapaCanvas) {
       desenharMiniMapaNaFoto(ctx, miniMapaCanvas, mapX, mapY, mapSize);
@@ -1023,14 +899,13 @@ async function capturarFoto() {
       {
         dataHora: dataHoraOverlay,
         coordenadas: coordenadasTexto,
-        heading: formatarHeading(heading),
         endereco1: endereco.linha1,
         endereco2: endereco.linha2
       },
       infoX,
       infoY,
       Math.max(300, w * 0.5),
-      38
+      40
     );
 
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.94));
@@ -1060,7 +935,6 @@ async function capturarFoto() {
     hashTexto.textContent =
       `${utmCompleta}\n` +
       `${coordenadasTexto}\n` +
-      `Direcao: ${formatarHeading(heading)}\n` +
       `${endereco.linha1}\n${endereco.linha2}\n` +
       `Hash real do arquivo (SHA-256): ${imageHash}`;
 

@@ -1,4 +1,4 @@
-const CACHE_VERSION = "v16";
+const CACHE_VERSION = "v17";
 const CACHE_NAME = `geofotobp-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   "./",

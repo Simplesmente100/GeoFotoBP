@@ -553,6 +553,47 @@ function dataHoraBR() {
   return `${dd}/${mm}/${yyyy} ${hh}:${mi}`;
 }
 
+function extrairCidadeELocalidade(address = {}) {
+  const cidade =
+    address.city || address.town || address.village || address.municipality || "Cidade indisponivel";
+  const localidade =
+    address.suburb ||
+    address.neighbourhood ||
+    address.hamlet ||
+    address.quarter ||
+    address.residential ||
+    address.city_district ||
+    "Localidade indisponivel";
+
+  return { cidade, localidade };
+}
+
+async function buscarCidadeELocalidade(lat, lng) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 4000);
+
+  try {
+    const resp = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=16&addressdetails=1`,
+      {
+        signal: controller.signal,
+        headers: { Accept: "application/json" },
+        cache: "no-store"
+      }
+    );
+    if (!resp.ok) throw new Error("Falha ao consultar localidade");
+    const data = await resp.json();
+    return extrairCidadeELocalidade(data.address || {});
+  } catch (_) {
+    return {
+      cidade: "Cidade indisponivel",
+      localidade: "Localidade indisponivel"
+    };
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
 function latLngParaUTM(latitude, longitude) {
   const a = 6378137.0;
   const f = 1 / 298.257223563;
@@ -666,18 +707,23 @@ async function capturarFoto() {
 
     let utmTexto = "UTM indisponivel";
     let utmCompleta = "UTM indisponivel";
+    let cidade = "Cidade indisponivel";
+    let localidade = "Localidade indisponivel";
 
     try {
       const geo = await obterLocalizacao();
       const utm = latLngParaUTM(geo.lat, geo.lng);
       utmTexto = `UTM: Z${utm.zona}${utm.hemisferio} E ${utm.easting} N ${utm.northing}`;
       utmCompleta = `${utmTexto} (WGS84)`;
+      const geoInfo = await buscarCidadeELocalidade(geo.lat, geo.lng);
+      cidade = geoInfo.cidade;
+      localidade = geoInfo.localidade;
     } catch (_) {
       alert("Permissao de localizacao negada ou indisponivel. A foto sera gerada sem coordenadas precisas.");
     }
 
     const dataHora = dataHoraBR();
-    const linhasPrincipais = [`Data: ${dataHora}`, utmTexto];
+    const linhasPrincipais = [`Data: ${dataHora}`, utmTexto, `Cidade: ${cidade}`, `Localidade: ${localidade}`];
 
     ctx.fillStyle = "#fff";
     ctx.strokeStyle = "#000";
@@ -721,7 +767,8 @@ async function capturarFoto() {
 
     lastBlob = blob;
     resultadoImg.src = URL.createObjectURL(blob);
-    hashTexto.textContent = `${utmCompleta}\nHash real do arquivo (SHA-256): ${imageHash}`;
+    hashTexto.textContent =
+      `${utmCompleta}\nCidade: ${cidade}\nLocalidade: ${localidade}\nHash real do arquivo (SHA-256): ${imageHash}`;
 
     btnDownload.disabled = false;
     btnDownloadHash.disabled = false;

@@ -41,6 +41,9 @@ let lastImageHash = null;
 let refreshing = false;
 let moderatorMode = false;
 let pendingDeleteRequests = [];
+let currentHeadingDeg = null;
+let orientationPermissionAttempted = false;
+let orientationListening = false;
 
 function setStatus(msg) {
   statusEl.textContent = msg;
@@ -56,6 +59,313 @@ function setPublicGalleryStatus(msg) {
 
 function setRequestPanelStatus(msg) {
   if (requestPanelStatus) requestPanelStatus.textContent = msg;
+}
+
+function formatarDataHoraOverlay() {
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  }).format(new Date());
+}
+
+function formatarCoordenadaHemisphere(value, positive, negative) {
+  const abs = Math.abs(value).toFixed(7);
+  return `${abs}${value >= 0 ? positive : negative}`;
+}
+
+function headingParaCardinal(heading) {
+  const normalized = ((heading % 360) + 360) % 360;
+  const directions = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+  return directions[Math.round(normalized / 45) % 8];
+}
+
+function formatarHeading(heading) {
+  if (typeof heading !== "number" || Number.isNaN(heading)) return "Sem orientacao";
+  const normalized = ((heading % 360) + 360) % 360;
+  return `${Math.round(normalized)}° ${headingParaCardinal(normalized)}`;
+}
+
+function atualizarHeading(event) {
+  if (typeof event.webkitCompassHeading === "number") {
+    currentHeadingDeg = event.webkitCompassHeading;
+    return;
+  }
+
+  if (typeof event.alpha === "number") {
+    currentHeadingDeg = 360 - event.alpha;
+  }
+}
+
+async function garantirOrientacao() {
+  if (orientationListening) return;
+
+  const handler = (event) => atualizarHeading(event);
+  const OrientationEventApi = window.DeviceOrientationEvent;
+  if (!OrientationEventApi) return;
+
+  if (
+    typeof OrientationEventApi.requestPermission === "function" &&
+    !orientationPermissionAttempted
+  ) {
+    orientationPermissionAttempted = true;
+    try {
+      const permission = await OrientationEventApi.requestPermission();
+      if (permission !== "granted") return;
+    } catch (_) {
+      return;
+    }
+  }
+
+  window.addEventListener("deviceorientationabsolute", handler, true);
+  window.addEventListener("deviceorientation", handler, true);
+  orientationListening = true;
+}
+
+async function esperarPrimeiraOrientacao(timeoutMs = 1800) {
+  if (typeof currentHeadingDeg === "number") return currentHeadingDeg;
+  await garantirOrientacao();
+  if (typeof currentHeadingDeg === "number") return currentHeadingDeg;
+
+  return new Promise((resolve) => {
+    const start = Date.now();
+    const timer = window.setInterval(() => {
+      if (typeof currentHeadingDeg === "number") {
+        window.clearInterval(timer);
+        resolve(currentHeadingDeg);
+        return;
+      }
+      if (Date.now() - start >= timeoutMs) {
+        window.clearInterval(timer);
+        resolve(null);
+      }
+    }, 120);
+  });
+}
+
+function recortarTexto(ctx, text, maxWidth) {
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  let output = text;
+  while (output.length > 3 && ctx.measureText(`${output}...`).width > maxWidth) {
+    output = output.slice(0, -1);
+  }
+  return `${output}...`;
+}
+
+function obterEnderecoCurto(address = {}) {
+  const linha1 = [address.house_number, address.road].filter(Boolean).join(" ").trim();
+  const localidade =
+    address.city || address.town || address.village || address.municipality || address.county || "";
+  const linha2 = [localidade, address.state].filter(Boolean).join(" - ").trim();
+
+  return {
+    linha1: linha1 || address.suburb || "Endereco indisponivel",
+    linha2: linha2 || "Bom Principio do Piaui - Piaui"
+  };
+}
+
+async function buscarEndereco(lat, lng) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 5000);
+
+  try {
+    const resp = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+      {
+        signal: controller.signal,
+        headers: { Accept: "application/json" },
+        cache: "no-store"
+      }
+    );
+    if (!resp.ok) throw new Error("Falha ao consultar endereco");
+    const data = await resp.json();
+    return obterEnderecoCurto(data.address || {});
+  } catch (_) {
+    return {
+      linha1: "Endereco indisponivel",
+      linha2: "Bom Principio do Piaui - Piaui"
+    };
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+function lonToTileX(lon, zoom) {
+  return ((lon + 180) / 360) * 2 ** zoom;
+}
+
+function latToTileY(lat, zoom) {
+  const latRad = (lat * Math.PI) / 180;
+  return (
+    ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * 2 ** zoom
+  );
+}
+
+async function carregarImagem(url) {
+  const resp = await fetch(url, { cache: "force-cache" });
+  if (!resp.ok) throw new Error("Falha ao carregar tile");
+  const blob = await resp.blob();
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("Falha ao decodificar tile"));
+    };
+    img.src = objectUrl;
+  });
+}
+
+async function gerarMiniMapa(lat, lng, size = 260, zoom = 18) {
+  const mapCanvas = document.createElement("canvas");
+  mapCanvas.width = size;
+  mapCanvas.height = size;
+  const mapCtx = mapCanvas.getContext("2d");
+  mapCtx.fillStyle = "rgba(255,255,255,0.92)";
+  mapCtx.fillRect(0, 0, size, size);
+
+  try {
+    const tileX = lonToTileX(lng, zoom);
+    const tileY = latToTileY(lat, zoom);
+    const baseX = Math.floor(tileX);
+    const baseY = Math.floor(tileY);
+    const pixelX = (tileX - baseX) * 256;
+    const pixelY = (tileY - baseY) * 256;
+
+    for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+      for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+        const x = baseX + offsetX;
+        const y = baseY + offsetY;
+        const tile = await carregarImagem(`https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`);
+        const drawX = offsetX * 256 - pixelX + size / 2;
+        const drawY = offsetY * 256 - pixelY + size / 2;
+        mapCtx.drawImage(tile, drawX, drawY, 256, 256);
+      }
+    }
+
+    mapCtx.fillStyle = "rgba(255,255,255,0.82)";
+    mapCtx.fillRect(0, size - 32, size, 32);
+    mapCtx.fillStyle = "#2f2f2f";
+    mapCtx.font = "600 16px system-ui, sans-serif";
+    mapCtx.fillText("OpenStreetMap", 10, size - 10);
+  } catch (_) {
+    mapCtx.fillStyle = "rgba(245,245,245,0.96)";
+    mapCtx.fillRect(0, 0, size, size);
+    mapCtx.fillStyle = "#4a4a4a";
+    mapCtx.font = "600 18px system-ui, sans-serif";
+    mapCtx.fillText("Mapa indisponivel", 42, size / 2);
+  }
+
+  const centerX = size / 2;
+  const centerY = size / 2;
+  mapCtx.fillStyle = "#e74c3c";
+  mapCtx.beginPath();
+  mapCtx.arc(centerX, centerY - 14, 12, 0, Math.PI * 2);
+  mapCtx.fill();
+  mapCtx.beginPath();
+  mapCtx.moveTo(centerX, centerY + 18);
+  mapCtx.lineTo(centerX - 10, centerY - 2);
+  mapCtx.lineTo(centerX + 10, centerY - 2);
+  mapCtx.closePath();
+  mapCtx.fill();
+  mapCtx.fillStyle = "#ffffff";
+  mapCtx.beginPath();
+  mapCtx.arc(centerX, centerY - 14, 4.5, 0, Math.PI * 2);
+  mapCtx.fill();
+
+  return mapCanvas;
+}
+
+function desenharBussola(ctx, heading, x, y, size) {
+  const radius = size / 2;
+  ctx.save();
+  ctx.translate(x + radius, y + radius);
+
+  ctx.fillStyle = "rgba(20, 20, 20, 0.45)";
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.lineWidth = Math.max(10, size * 0.08);
+  ctx.strokeStyle = "rgba(45, 45, 45, 0.9)";
+  ctx.beginPath();
+  ctx.arc(0, 0, radius - ctx.lineWidth / 2, Math.PI * 0.15, Math.PI * 1.85);
+  ctx.stroke();
+
+  ctx.fillStyle = "#ffffff";
+  ctx.font = `700 ${Math.round(size * 0.12)}px system-ui, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const labels = [
+    { text: "N", angle: -90 },
+    { text: "E", angle: 0 },
+    { text: "S", angle: 90 },
+    { text: "W", angle: 180 }
+  ];
+  labels.forEach(({ text, angle }) => {
+    const rad = (angle * Math.PI) / 180;
+    const tx = Math.cos(rad) * (radius - size * 0.12);
+    const ty = Math.sin(rad) * (radius - size * 0.12);
+    ctx.fillText(text, tx, ty);
+  });
+
+  const normalized = typeof heading === "number" ? ((heading % 360) + 360) % 360 : 0;
+  ctx.rotate((normalized * Math.PI) / 180);
+  ctx.fillStyle = "#00c6f7";
+  ctx.beginPath();
+  ctx.moveTo(0, -(radius - size * 0.14));
+  ctx.lineTo(size * 0.09, size * 0.16);
+  ctx.lineTo(-size * 0.09, size * 0.16);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function desenharMiniMapaNaFoto(ctx, mapCanvas, x, y, size) {
+  ctx.save();
+  ctx.fillStyle = "rgba(255,255,255,0.78)";
+  ctx.fillRect(x, y, size, size);
+  ctx.drawImage(mapCanvas, x, y, size, size);
+  ctx.strokeStyle = "rgba(255,255,255,0.95)";
+  ctx.lineWidth = 4;
+  ctx.strokeRect(x, y, size, size);
+  ctx.restore();
+}
+
+function desenharBlocoInfo(ctx, info, x, y, maxWidth, lineHeight) {
+  const lines = [
+    info.dataHora,
+    info.coordenadas,
+    info.heading,
+    info.endereco1,
+    info.endereco2
+  ].filter(Boolean);
+
+  ctx.save();
+  ctx.textAlign = "right";
+  ctx.textBaseline = "top";
+  ctx.fillStyle = "#ffffff";
+  ctx.strokeStyle = "rgba(0,0,0,0.45)";
+  ctx.lineWidth = 5;
+  ctx.lineJoin = "round";
+  ctx.font = "500 23px system-ui, sans-serif";
+
+  lines.forEach((line, index) => {
+    const safeLine = recortarTexto(ctx, line, maxWidth);
+    const lineY = y + index * lineHeight;
+    ctx.strokeText(safeLine, x, lineY);
+    ctx.fillText(safeLine, x, lineY);
+  });
+
+  ctx.restore();
 }
 
 function setModeratorVisualState() {
@@ -650,7 +960,8 @@ function baixarTexto(conteudo, nomeArquivo) {
 async function capturarFoto() {
   try {
     btnFoto.disabled = true;
-    setStatus("Capturando foto e coletando localizacao...");
+    setStatus("Capturando foto, orientacao e localizacao...");
+    await garantirOrientacao();
 
     if (!video.videoWidth || !video.videoHeight) {
       throw new Error("A camera ainda nao esta pronta.");
@@ -666,36 +977,61 @@ async function capturarFoto() {
 
     let utmTexto = "UTM indisponivel";
     let utmCompleta = "UTM indisponivel";
+    let geo = null;
+    let coordenadasTexto = "Coordenadas indisponiveis";
+    let endereco = {
+      linha1: "Endereco indisponivel",
+      linha2: "Bom Principio do Piaui - Piaui"
+    };
+    let miniMapaCanvas = null;
 
     try {
-      const geo = await obterLocalizacao();
+      geo = await obterLocalizacao();
       const utm = latLngParaUTM(geo.lat, geo.lng);
       utmTexto = `UTM: Z${utm.zona}${utm.hemisferio} E ${utm.easting} N ${utm.northing}`;
       utmCompleta = `${utmTexto} (WGS84)`;
+      coordenadasTexto = `${formatarCoordenadaHemisphere(geo.lat, "N", "S")} ${formatarCoordenadaHemisphere(
+        geo.lng,
+        "E",
+        "W"
+      )}`;
+      endereco = await buscarEndereco(geo.lat, geo.lng);
+      miniMapaCanvas = await gerarMiniMapa(geo.lat, geo.lng);
     } catch (_) {
       alert("Permissao de localizacao negada ou indisponivel. A foto sera gerada sem coordenadas precisas.");
     }
 
+    const heading = await esperarPrimeiraOrientacao();
     const dataHora = dataHoraBR();
-    const linhasPrincipais = [`Data: ${dataHora}`, utmTexto];
+    const dataHoraOverlay = formatarDataHoraOverlay();
+    const margem = Math.max(24, Math.round(w * 0.02));
+    const compassSize = Math.max(120, Math.round(Math.min(w, h) * 0.14));
+    const mapSize = Math.max(220, Math.round(Math.min(w, h) * 0.3));
+    const mapX = margem;
+    const mapY = h - margem - mapSize;
+    const infoX = w - margem;
+    const infoY = h - margem - 180;
 
-    ctx.fillStyle = "#fff";
-    ctx.strokeStyle = "#000";
-    ctx.lineWidth = 4;
+    desenharBussola(ctx, heading, margem, margem, compassSize);
 
-    const lineHeightPrincipal = 29;
-    const margem = 22;
-    const alturaTexto = linhasPrincipais.length * lineHeightPrincipal;
-    const yBase = h - margem - alturaTexto;
+    if (miniMapaCanvas) {
+      desenharMiniMapaNaFoto(ctx, miniMapaCanvas, mapX, mapY, mapSize);
+    }
 
-    let yAtual = yBase;
-
-    ctx.font = "21px system-ui, sans-serif";
-    linhasPrincipais.forEach((linha) => {
-      ctx.strokeText(linha, margem, yAtual);
-      ctx.fillText(linha, margem, yAtual);
-      yAtual += lineHeightPrincipal;
-    });
+    desenharBlocoInfo(
+      ctx,
+      {
+        dataHora: dataHoraOverlay,
+        coordenadas: coordenadasTexto,
+        heading: formatarHeading(heading),
+        endereco1: endereco.linha1,
+        endereco2: endereco.linha2
+      },
+      infoX,
+      infoY,
+      Math.max(300, w * 0.5),
+      38
+    );
 
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.94));
     if (!blob) throw new Error("Falha ao gerar imagem final.");
@@ -721,7 +1057,12 @@ async function capturarFoto() {
 
     lastBlob = blob;
     resultadoImg.src = URL.createObjectURL(blob);
-    hashTexto.textContent = `${utmCompleta}\nHash real do arquivo (SHA-256): ${imageHash}`;
+    hashTexto.textContent =
+      `${utmCompleta}\n` +
+      `${coordenadasTexto}\n` +
+      `Direcao: ${formatarHeading(heading)}\n` +
+      `${endereco.linha1}\n${endereco.linha2}\n` +
+      `Hash real do arquivo (SHA-256): ${imageHash}`;
 
     btnDownload.disabled = false;
     btnDownloadHash.disabled = false;

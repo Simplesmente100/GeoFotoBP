@@ -69,11 +69,6 @@ function formatarDataHoraOverlay() {
   }).format(new Date());
 }
 
-function formatarCoordenadaHemisphere(value, positive, negative) {
-  const abs = Math.abs(value).toFixed(7);
-  return `${abs}${value >= 0 ? positive : negative}`;
-}
-
 function recortarTexto(ctx, text, maxWidth) {
   if (ctx.measureText(text).width <= maxWidth) return text;
   let output = text;
@@ -81,44 +76,6 @@ function recortarTexto(ctx, text, maxWidth) {
     output = output.slice(0, -1);
   }
   return `${output}...`;
-}
-
-function obterEnderecoCurto(address = {}) {
-  const linha1 = [address.house_number, address.road].filter(Boolean).join(" ").trim();
-  const localidade =
-    address.city || address.town || address.village || address.municipality || address.county || "";
-  const linha2 = [localidade, address.state].filter(Boolean).join(" - ").trim();
-
-  return {
-    linha1: linha1 || address.suburb || "Endereco indisponivel",
-    linha2: linha2 || "Bom Principio do Piaui - Piaui"
-  };
-}
-
-async function buscarEndereco(lat, lng) {
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 5000);
-
-  try {
-    const resp = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
-      {
-        signal: controller.signal,
-        headers: { Accept: "application/json" },
-        cache: "no-store"
-      }
-    );
-    if (!resp.ok) throw new Error("Falha ao consultar endereco");
-    const data = await resp.json();
-    return obterEnderecoCurto(data.address || {});
-  } catch (_) {
-    return {
-      linha1: "Endereco indisponivel",
-      linha2: "Bom Principio do Piaui - Piaui"
-    };
-  } finally {
-    window.clearTimeout(timeout);
-  }
 }
 
 function lonToTileX(lon, zoom) {
@@ -225,9 +182,7 @@ function desenharMiniMapaNaFoto(ctx, mapCanvas, x, y, size) {
 function desenharBlocoInfo(ctx, info, x, y, maxWidth, lineHeight) {
   const lines = [
     info.dataHora,
-    info.coordenadas,
-    info.endereco1,
-    info.endereco2
+    info.utm
   ].filter(Boolean);
 
   ctx.save();
@@ -858,11 +813,6 @@ async function capturarFoto() {
     let utmTexto = "UTM indisponivel";
     let utmCompleta = "UTM indisponivel";
     let geo = null;
-    let coordenadasTexto = "Coordenadas indisponiveis";
-    let endereco = {
-      linha1: "Endereco indisponivel",
-      linha2: "Bom Principio do Piaui - Piaui"
-    };
     let miniMapaCanvas = null;
 
     try {
@@ -870,12 +820,6 @@ async function capturarFoto() {
       const utm = latLngParaUTM(geo.lat, geo.lng);
       utmTexto = `UTM: Z${utm.zona}${utm.hemisferio} E ${utm.easting} N ${utm.northing}`;
       utmCompleta = `${utmTexto} (WGS84)`;
-      coordenadasTexto = `${formatarCoordenadaHemisphere(geo.lat, "N", "S")} ${formatarCoordenadaHemisphere(
-        geo.lng,
-        "E",
-        "W"
-      )}`;
-      endereco = await buscarEndereco(geo.lat, geo.lng);
       miniMapaCanvas = await gerarMiniMapa(geo.lat, geo.lng);
     } catch (_) {
       alert("Permissao de localizacao negada ou indisponivel. A foto sera gerada sem coordenadas precisas.");
@@ -898,9 +842,7 @@ async function capturarFoto() {
       ctx,
       {
         dataHora: dataHoraOverlay,
-        coordenadas: coordenadasTexto,
-        endereco1: endereco.linha1,
-        endereco2: endereco.linha2
+        utm: utmTexto
       },
       infoX,
       infoY,
@@ -934,8 +876,6 @@ async function capturarFoto() {
     resultadoImg.src = URL.createObjectURL(blob);
     hashTexto.textContent =
       `${utmCompleta}\n` +
-      `${coordenadasTexto}\n` +
-      `${endereco.linha1}\n${endereco.linha2}\n` +
       `Hash real do arquivo (SHA-256): ${imageHash}`;
 
     btnDownload.disabled = false;
